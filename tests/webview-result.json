@@ -1,0 +1,6 @@
+{
+  "ok": false,
+  "error": "Cannot set properties of null (setting 'value')",
+  "stack": "TypeError: Cannot set properties of null (setting 'value')\n    at eval (eval at <anonymous> (:2:29), <anonymous>:12:19)",
+  "closeFlush": true
+}

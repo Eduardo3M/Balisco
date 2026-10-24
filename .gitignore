@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+*.db*
+export_libros.json
+portadas/*.jpg
+*.zip
+logs/
+*.log
+.agents/
+.tmp/
+build/
+dist/
+*.egg-info/

@@ -1,0 +1,16 @@
+[project]
+name = "balisco"
+version = "0.1.0"
+description = "Biblioteca local sobre metadatos Google DriveFS"
+requires-python = ">=3.12"
+dependencies = ["send2trash>=1.8,<2", "pywebview>=6.2,<7", "Pillow>=12,<13"]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6,<7"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["core*"]
