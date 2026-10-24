@@ -136,7 +136,7 @@ class WindowChrome:
             return
         style = user32.GetWindowLongW(self.hwnd, GWL_STYLE)
         # WS_CAPTION activa las animaciones nativas del Desktop Window Manager (DWM).
-        user32.SetWindowLongW(self.hwnd, GWL_STYLE, style | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX)
+        user32.SetWindowLongW(self.hwnd, GWL_STYLE, style | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX)
         try:
             m = MARGINS(0, 0, 1, 0)
             dwmapi.DwmExtendFrameIntoClientArea(self.hwnd, ctypes.byref(m))
