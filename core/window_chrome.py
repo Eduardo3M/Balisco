@@ -15,8 +15,7 @@ IS_WIN = sys.platform == 'win32'
 
 WM_SYSCOMMAND = 0x0112
 WM_NCLBUTTONDOWN = 0x00A1
-SC_SIZE, SC_MOVE, SC_MINIMIZE, SC_MAXIMIZE, SC_RESTORE = 0xF000, 0xF010, 0xF020, 0xF030, 0xF120
-WS_CAPTION = 0x00C00000
+SC_SIZE, SC_MOVE = 0xF000, 0xF010
 HTCAPTION = 2
 SW_HIDE, SW_SHOWMAXIMIZED, SW_SHOWNORMAL = 0, 3, 1
 GWL_STYLE = -16
@@ -44,14 +43,8 @@ class MONITORINFO(ctypes.Structure):
                 ('rcWork', RECT), ('dwFlags', wintypes.DWORD)]
 
 
-class MARGINS(ctypes.Structure):
-    _fields_ = [('cxLeftWidth', ctypes.c_int), ('cxRightWidth', ctypes.c_int),
-                ('cyTopHeight', ctypes.c_int), ('cyBottomHeight', ctypes.c_int)]
-
 if IS_WIN:
     user32 = ctypes.WinDLL('user32', use_last_error=True)
-    dwmapi = ctypes.WinDLL('dwmapi', use_last_error=True)
-    dwmapi.DwmExtendFrameIntoClientArea.argtypes = [wintypes.HWND, ctypes.POINTER(MARGINS)]
     user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
     user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
@@ -135,13 +128,8 @@ class WindowChrome:
         if not (IS_WIN and self.resolve()):
             return
         style = user32.GetWindowLongW(self.hwnd, GWL_STYLE)
-        # WS_CAPTION activa las animaciones nativas del Desktop Window Manager (DWM).
+        # Permite minimizar/restaurar desde la barra de tareas, Aero Snap nativo y Win+flechas.
         user32.SetWindowLongW(self.hwnd, GWL_STYLE, style | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX)
-        try:
-            m = MARGINS(0, 0, 1, 0)
-            dwmapi.DwmExtendFrameIntoClientArea(self.hwnd, ctypes.byref(m))
-        except Exception:
-            pass
         self._fit_maximized_bounds()
         self._monitor = user32.MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST)
 
@@ -173,22 +161,14 @@ class WindowChrome:
 
     # ---- acciones ----------------------------------------------------------
     def minimize(self):
-        if IS_WIN and self.resolve():
-            user32.PostMessageW(self.hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0)
-            return True
         from System.Windows.Forms import FormWindowState
         self._ui(lambda: setattr(self._native(), 'WindowState', FormWindowState.Minimized))
         return True
 
     def toggle_maximize(self):
-        target = not self.is_maximized()
-        if IS_WIN and self.resolve():
-            cmd = SC_MAXIMIZE if target else SC_RESTORE
-            if target:
-                self._fit_maximized_bounds()
-            user32.PostMessageW(self.hwnd, WM_SYSCOMMAND, cmd, 0)
-            return target
         from System.Windows.Forms import FormWindowState
+        target = not self.is_maximized()
+
         def apply():
             native = self._native()
             if target:
