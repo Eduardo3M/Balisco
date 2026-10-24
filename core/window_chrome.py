@@ -15,7 +15,7 @@ IS_WIN = sys.platform == 'win32'
 
 WM_SYSCOMMAND = 0x0112
 WM_NCLBUTTONDOWN = 0x00A1
-SC_SIZE, SC_MOVE = 0xF000, 0xF010
+SC_SIZE, SC_MOVE, SC_MINIMIZE = 0xF000, 0xF010, 0xF020
 HTCAPTION = 2
 SW_HIDE, SW_SHOWMAXIMIZED, SW_SHOWNORMAL = 0, 3, 1
 GWL_STYLE = -16
@@ -161,6 +161,9 @@ class WindowChrome:
 
     # ---- acciones ----------------------------------------------------------
     def minimize(self):
+        if IS_WIN and self.resolve():
+            user32.PostMessageW(self.hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0)
+            return True
         from System.Windows.Forms import FormWindowState
         self._ui(lambda: setattr(self._native(), 'WindowState', FormWindowState.Minimized))
         return True
