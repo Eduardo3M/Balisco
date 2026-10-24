@@ -34,3 +34,44 @@ Name: "{autodesktop}\Balisco"; Filename: "{app}\Balisco.exe"; WorkingDir: "{app}
 
 [Run]
 Filename: "{app}\Balisco.exe"; Description: "Abrir Balisco"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// Detectar versión previa y solicitar desinstalación antes de continuar
+function InitializeSetup(): Boolean;
+var
+  UninstPath: String;
+  ResultCode: Integer;
+begin
+  Result := True;
+  // Buscar en el registro de desinstalación de Windows para el usuario actual
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{9E6E7277-1A77-4A99-B09C-E3BE871CB4D2}_is1', 'UninstallString', UninstPath) then
+  begin
+    // Quitar comillas si las tiene
+    UninstPath := RemoveQuotes(UninstPath);
+    if FileExists(UninstPath) then
+    begin
+      if MsgBox('Se ha detectado una versión anterior de Balisco instalada en su equipo.' + #13#10 + #13#10 +
+                '¿Desea desinstalarla automáticamente ahora para continuar con una instalación limpia?',
+                mbConfirmation, MB_YESNO) = IDYES then
+      begin
+        // Ejecutar desinstalador silencioso
+        if Exec(UninstPath, '/SILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+        begin
+          // Desinstalación completada con éxito
+          Result := True;
+        end
+        else
+        begin
+          MsgBox('No se pudo completar la desinstalación de la versión anterior.' + #13#10 +
+                 'La instalación se cancelará para evitar conflictos.', mbError, MB_OK);
+          Result := False;
+        end;
+      end
+      else
+      begin
+        // El usuario eligió no desinstalar la versión previa
+        Result := False;
+      end;
+    end;
+  end;
+end;
