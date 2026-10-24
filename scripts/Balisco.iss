@@ -50,9 +50,9 @@ begin
     UninstPath := RemoveQuotes(UninstPath);
     if FileExists(UninstPath) then
     begin
-      if MsgBox('Se ha detectado una versión anterior de Balisco instalada en su equipo.' + #13#10 + #13#10 +
+      if WizardSilent() or (MsgBox('Se ha detectado una versión anterior de Balisco instalada en su equipo.' + #13#10 + #13#10 +
                 '¿Desea desinstalarla automáticamente ahora para continuar con una instalación limpia?',
-                mbConfirmation, MB_YESNO) = IDYES then
+                mbConfirmation, MB_YESNO) = IDYES) then
       begin
         // Ejecutar desinstalador silencioso
         if Exec(UninstPath, '/SILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
