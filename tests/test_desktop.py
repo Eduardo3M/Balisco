@@ -60,16 +60,25 @@ class DesktopTests(unittest.TestCase):
                 db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
                            ('test_container','Mundodisco','curso',r'Mi unidad\Biblioteca\Containers\Mundodisco','test'))
                 db.execute("INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
-                           ('test_container','test_mort','Mort.pdf','internal','test'))
-        self.assertEqual(self.call('query',tokens=['Mort'])['items'],[])
+                           ('test_container','test_mort','Materials/Unit 3/Mort.pdf','internal','test'))
+        self.assertEqual(self.call('query',tokens=['Unit'])['items'],[])
         with closing(self.api._connect()) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM container_entries_fts WHERE container_entries_fts MATCH 'Mort'").fetchone()[0],0)
-        self.call('set_deep_search',id='test_container',enabled=True)
-        rows=self.call('query',tokens=['Mort'])['items']
+        original=self.api._dispatch
+        def dispatch(db,action,payload):
+            if action=='container':
+                rows={'test_mort':{'id':'test_mort','title':'Materials/Unit 3/Mort.pdf','path':r'Mi unidad\Biblioteca\Containers\Mundodisco\Materials\Unit 3\Mort.pdf','size':10,'mime':'application/pdf'}}
+                self.api._containers[payload['id']]=rows
+                return list(rows.values())
+            return original(db,action,payload)
+        with patch.object(self.api,'_dispatch',side_effect=dispatch):
+            self.call('set_deep_search',id='test_container',enabled=True)
+        rows=self.call('query',tokens=['Unit'])['items']
         self.assertEqual([row['drive_id'] for row in rows],['test_container'])
-        self.assertEqual(rows[0]['coincidencia_interna'],['Mort.pdf'])
-        self.call('set_deep_search',id='test_container',enabled=False)
-        self.assertEqual(self.call('query',tokens=['Mort'])['items'],[])
+        self.assertEqual(rows[0]['coincidencia_interna'],['Materials/Unit 3/Mort.pdf'])
+        with patch.object(self.api,'_dispatch',side_effect=dispatch):
+            self.call('set_deep_search',id='test_container',enabled=False)
+        self.assertEqual(self.call('query',tokens=['Unit'])['items'],[])
         with closing(self.api._connect()) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM container_entries_fts WHERE container_entries_fts MATCH 'Mort'").fetchone()[0],0)
     def test_hidden_sort_and_taxonomy_edit(self):
@@ -132,6 +141,50 @@ class DesktopTests(unittest.TestCase):
             self.assertIsNone(db.execute("SELECT 1 FROM container_entries WHERE drive_id='test_lesson'").fetchone())
             move=db.execute("SELECT expected_relative,container_drive_id FROM pending_container_moves WHERE drive_id='test_lesson'").fetchone()
             self.assertEqual(tuple(move),(r'Mi unidad\Biblioteca\Storage\Section\lesson.pdf',''))
+    def test_container_view_preference_is_saved_per_container(self):
+        with closing(self.api._connect()) as db:
+            with db:
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
+                           ('test_container','Course','curso',r'Mi unidad\Biblioteca\Containers\Course','test'))
+        self.assertEqual(self.call('container_view',id='test_container')['view'],'details')
+        self.assertEqual(self.call('container_view',id='test_container',view='grid')['view'],'grid')
+        self.assertEqual(self.call('container_view',id='test_container')['view'],'grid')
+        self.assertEqual(self.call('container_view',id='test_container',view='list')['view'],'list')
+        self.assertFalse(self.api.call('container_view',{'id':'test_container','view':'invalid'})['ok'])
+    def test_container_background_preferences_are_independent_and_bounded(self):
+        self.call('preference',key='wallpaper_opacity',value=31)
+        self.call('preference',key='wallpaper_blur',value=12)
+        self.call('preference',key='container_wallpaper',value='containers.jpg')
+        self.call('preference',key='container_background_opacity',value=78)
+        self.call('preference',key='container_background_blur',value=7)
+        prefs=self.call('bootstrap')['prefs']
+        self.assertEqual(prefs['wallpaper_opacity'],'31')
+        self.assertEqual(prefs['wallpaper_blur'],'12')
+        self.assertEqual(prefs['container_wallpaper'],'containers.jpg')
+        self.assertEqual(prefs['container_background_opacity'],'78')
+        self.assertEqual(prefs['container_background_blur'],'7')
+        self.assertFalse(self.api.call('preference',{'key':'container_background_opacity','value':101})['ok'])
+        self.assertFalse(self.api.call('preference',{'key':'container_background_blur','value':31})['ok'])
+    def test_container_resource_properties_remain_editable_when_nested(self):
+        with closing(self.api._connect()) as db:
+            with db:
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,disponible) VALUES(?,?,?,?,?,1)",
+                           ('test_container','Course','curso',r'Mi unidad\Biblioteca\Containers\Course','test'))
+                db.execute("UPDATE items SET disponible=0 WHERE drive_id='test_drive_001'")
+                db.execute("INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
+                           ('test_container','test_drive_001','Books/Book.pdf',r'Mi unidad\Biblioteca\Containers\Course\Books\Book.pdf','test'))
+        original=self.api._dispatch
+        def dispatch(db,action,payload):
+            if action=='container':
+                rows={'test_drive_001':{'id':'test_drive_001','title':'Books/Book.pdf','path':r'Mi unidad\Biblioteca\Containers\Course\Books\Book.pdf'}}
+                self.api._containers[payload['id']]=rows
+                return list(rows.values())
+            return original(db,action,payload)
+        with patch.object(self.api,'_dispatch',side_effect=dispatch):
+            result=self.call('container_update',container='test_container',id='test_drive_001',field='rating',value=4)
+        self.assertEqual(result,{'field':'rating','value':4})
+        with closing(self.api._connect()) as db:
+            self.assertEqual(tuple(db.execute("SELECT rating,disponible FROM items WHERE drive_id='test_drive_001'").fetchone()),(4,0))
     def test_create_container_and_import_folder(self):
         library=self.root/'Mi unidad'/'Biblioteca'; library.mkdir(parents=True)
         source=library/'book.pdf'; source.write_bytes(b'book')
@@ -243,6 +296,7 @@ class DesktopTests(unittest.TestCase):
         res=self.call('save_wallpaper',name='custom_test.jpg',data=base64.b64encode(buf.getvalue()).decode())
         self.assertEqual(res['filename'],'custom_test.jpg')
         self.call('preference',key='wallpaper',value='custom_test.jpg')
+        self.call('preference',key='container_wallpaper',value='custom_test.jpg')
         self.assertEqual(self.call('bootstrap')['prefs']['wallpaper'],'custom_test.jpg')
         data_url=self.call('get_wallpaper',filename='custom_test.jpg')
         self.assertTrue(data_url.startswith('data:image/jpeg;base64,'))
@@ -251,8 +305,10 @@ class DesktopTests(unittest.TestCase):
         self.call('set_wallpaper_centered',filename='custom_test.jpg',centered=False)
         self.assertEqual(json.loads(self.call('bootstrap')['prefs']['wallpaper_positions']),{'custom_test.jpg':False})
         self.assertFalse(next(w for w in self.call('wallpapers_list') if w['filename']=='custom_test.jpg')['centered'])
-        self.assertTrue(self.call('delete_wallpaper',filename='custom_test.jpg')['active'])
-        self.assertEqual(self.call('bootstrap')['prefs']['wallpaper'],'')
+        deleted=self.call('delete_wallpaper',filename='custom_test.jpg')
+        self.assertTrue(deleted['active']);self.assertTrue(deleted['activeContainer'])
+        prefs=self.call('bootstrap')['prefs']
+        self.assertEqual(prefs['wallpaper'],'');self.assertEqual(prefs['container_wallpaper'],'')
         self.assertIsNone(self.call('get_wallpaper',filename='custom_test.jpg'))
         self.assertFalse(self.api.call('delete_wallpaper',{'filename':'../biblioteca.db'})['ok'])
 

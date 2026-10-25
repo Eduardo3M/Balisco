@@ -10,6 +10,8 @@ const paths={
  star:'<path d="M12 2l3.1 6.3 6.9 1-5 4.8 1.2 6.9-6.2-3.3L5.8 21 7 14.1 2 9.3l6.9-1z"/>',
  filter:'<path d="M3 4h18l-7 8v7l-4 2v-9z"/>',
  grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+ list:'<path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r=".8"/><circle cx="4" cy="12" r=".8"/><circle cx="4" cy="18" r=".8"/>',
+ details:'<rect x="2.5" y="4" width="19" height="16" rx="1.5"/><path d="M2.5 9h19M2.5 14.5h19M15.5 9v11M5.5 6.5h7M5.5 11.7h7M5.5 17.2h7"/>',
  web:'<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>',
  local:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
  backup:'<path d="M7 18H6a4 4 0 0 1-1-7.9 7 7 0 0 1 13-2A5 5 0 0 1 18 18h-1M12 21V11m-4 4 4-4 4 4"/>',

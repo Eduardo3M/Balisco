@@ -227,7 +227,7 @@ class DesktopAPI:
         profile=preferencia(db,'id_perfil_drive','')
         manager=ItemsManager(db)
         if action=='bootstrap':
-            return {'prefs':{r['clave']:r['valor'] for r in db.execute("SELECT * FROM configuracion WHERE clave IN ('tema','zoom','modo','id_perfil_drive','wallpaper','wallpaper_opacity','wallpaper_blur','wallpaper_positions')")},'count':db.execute('SELECT count(*) FROM items WHERE disponible=1 AND oculto=0 AND perfil_drive=?',(profile,)).fetchone()[0]}
+            return {'prefs':{r['clave']:r['valor'] for r in db.execute("SELECT * FROM configuracion WHERE clave IN ('tema','zoom','modo','id_perfil_drive','wallpaper','wallpaper_opacity','wallpaper_blur','wallpaper_positions','container_wallpaper','container_background_opacity','container_background_blur')")},'count':db.execute('SELECT count(*) FROM items WHERE disponible=1 AND oculto=0 AND perfil_drive=?',(profile,)).fetchone()[0]}
         if action=='ready':
             metrics={'ready_ms':round((time.perf_counter()-self._started)*1000,1),'renderer':'edgechromium','frontend':p}
             (self._dir/'performance.json').write_text(json.dumps(metrics,indent=2),encoding='utf-8')
@@ -256,14 +256,26 @@ class DesktopAPI:
             if item['tipo']!='curso' or type(p.get('enabled')) is not bool:
                 raise ValueError('Configuración del contenedor inválida')
             enabled=int(p['enabled'])
+            try:
+                self._dispatch(db,'container',{'id':item['drive_id']})
+                records=list(self._containers.get(item['drive_id'],{}).values())
+            except FileNotFoundError:
+                # Let the existing catalog snapshot remain searchable when DriveFS is temporarily unavailable.
+                records=[{'id':row['drive_id'],'title':row['titulo'],'path':row['ruta_relativa'],
+                          'size':row['tamano_bytes'],'mime':row['mime_type']}
+                         for row in db.execute('''SELECT drive_id,titulo,ruta_relativa,tamano_bytes,mime_type
+                             FROM container_entries WHERE container_drive_id=? AND perfil_drive=?''',
+                             (item['drive_id'],profile))]
             with db:
-                if enabled and not item['indexar_contenido']:
-                    db.execute('''INSERT INTO container_entries_fts(rowid,titulo)
-                        SELECT id,titulo FROM container_entries WHERE container_drive_id=?''',(item['drive_id'],))
-                elif not enabled and item['indexar_contenido']:
-                    db.execute('''INSERT INTO container_entries_fts(container_entries_fts,rowid,titulo)
-                        SELECT 'delete',id,titulo FROM container_entries WHERE container_drive_id=?''',(item['drive_id'],))
+                db.execute('DELETE FROM container_entries WHERE container_drive_id=? AND perfil_drive=?',(item['drive_id'],profile))
                 db.execute('UPDATE items SET indexar_contenido=? WHERE id=?',(enabled,item['id']))
+                db.executemany('''INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive)
+                    VALUES(?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
+                    container_drive_id=excluded.container_drive_id,titulo=excluded.titulo,
+                    ruta_relativa=excluded.ruta_relativa,tamano_bytes=excluded.tamano_bytes,
+                    mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive''',
+                    [(item['drive_id'],row['id'],row['title'],row['path'],row.get('size') or 0,row.get('mime'),profile)
+                     for row in records if not row.get('folder')])
             return {'indexar_contenido':int(p['enabled'])}
         if action=='detail':
             item=self._item(db,p['id']); item['url']=manager.url(p['id']); return item
@@ -348,9 +360,11 @@ class DesktopAPI:
             elif key=='zoom' and not 100<=int(value)<=430: raise ValueError('Zoom inválido')
             elif key=='wallpaper_opacity' and not 0<=int(value)<=100: raise ValueError('Opacidad inválida')
             elif key=='wallpaper_blur' and not 0<=int(value)<=30: raise ValueError('Desenfoque inválido')
+            elif key=='container_background_opacity' and not 0<=int(value)<=100: raise ValueError('Opacidad del fondo de contenedores inválida')
+            elif key=='container_background_blur' and not 0<=int(value)<=30: raise ValueError('Desenfoque del fondo de contenedores inválido')
             elif key=='show_overlays' and value not in ('true','false'): raise ValueError('Preferencia inválida')
             elif key=='wallpaper': pass
-            elif key not in ('tema','modo','zoom','wallpaper','wallpaper_opacity','wallpaper_blur'): raise ValueError('Preferencia inválida')
+            elif key not in ('tema','modo','zoom','wallpaper','wallpaper_opacity','wallpaper_blur','container_wallpaper','container_background_opacity','container_background_blur'): raise ValueError('Preferencia inválida')
             with db: configurar(db,key,value)
             return True
         if action=='wallpapers_list':
@@ -387,10 +401,12 @@ class DesktopAPI:
             positions=json.loads(preferencia(db,'wallpaper_positions','{}'))
             positions.pop(filename,None)
             active=preferencia(db,'wallpaper','')==filename
+            active_container=preferencia(db,'container_wallpaper','')==filename
             with db:
                 configurar(db,'wallpaper_positions',json.dumps(positions))
                 if active: configurar(db,'wallpaper','')
-            return {'active':active}
+                if active_container: configurar(db,'container_wallpaper','')
+            return {'active':active,'activeContainer':active_container}
         if action=='get_wallpaper':
             fn=p.get('filename')
             if not fn: return None
@@ -437,7 +453,6 @@ class DesktopAPI:
                 wp_dir=self._dir/'wallpapers'; wp_dir.mkdir(exist_ok=True)
                 target=wp_dir/clean
                 image.save(target,'JPEG',quality=90)
-                with db: configurar(db,'wallpaper',clean)
                 return {'filename':clean,'name':target.stem}
         if action=='pick_wallpaper':
             selected=None
@@ -563,6 +578,32 @@ class DesktopAPI:
             records.sort(key=lambda r:r['title'].casefold())
             self._containers[p['id']]={r['id']:r for r in records}
             return [{k:v for k,v in r.items() if k!='path'} for r in records]
+        if action=='container_view':
+            item=self._item(db,p['id'])
+            if item['tipo']!='curso': raise ValueError('No es un contenedor')
+            key='vista_contenedor_v2:'+item['drive_id']
+            view=p.get('view')
+            if view is not None:
+                if view not in ('details','list','grid'): raise ValueError('Vista de contenedor inválida')
+                with db: configurar(db,key,view)
+            saved=preferencia(db,key,'')
+            if not saved:
+                legacy=preferencia(db,'vista_contenedor:'+item['drive_id'],'list')
+                saved='grid' if legacy=='grid' else 'details'
+            return {'view':saved if saved in ('details','list','grid') else 'details'}
+        if action=='container_cover':
+            container=self._item(db,p['container'])
+            if container['tipo']!='curso': raise ValueError('No es un contenedor')
+            ident=str(p.get('id',''))
+            if not ID_PATTERN.fullmatch(ident): raise ValueError('ID inválido')
+            record=self._containers.get(p['container'],{}).get(ident)
+            if not record or record.get('folder'): return None
+            path=self._dir/'portadas'/(ident+'.jpg')
+            if not path.is_file() or path.is_symlink():
+                from .thumbnailer import thumbnail_name
+                path=self._dir/'portadas_auto'/thumbnail_name(container['perfil_drive'],record['path'])
+            if not path.is_file() or path.is_symlink() or path.stat().st_size>8_000_000: return None
+            return 'data:image/jpeg;base64,'+base64.b64encode(path.read_bytes()).decode('ascii')
         if action=='container_resource_detail':
             container=self._item(db,p['container'])
             self._dispatch(db,'container',{'id':p['container']})
@@ -576,6 +617,44 @@ class DesktopAPI:
                     FROM items WHERE drive_id=? AND perfil_drive=?''',(p['id'],container['perfil_drive'])).fetchone()
                 if item: result['item']=dict(item)
             return result
+        if action=='container_indexed_ids':
+            container=self._item(db,p['container'])
+            if container['tipo']!='curso': raise ValueError('No es un contenedor')
+            ids=p.get('ids',[])
+            if not isinstance(ids,list) or len(ids)>10000 or any(not isinstance(ident,str) or not ID_PATTERN.fullmatch(ident) for ident in ids):
+                raise ValueError('Selección inválida')
+            records=self._containers.get(p['container'])
+            if records is None:
+                self._dispatch(db,'container',{'id':p['container']})
+                records=self._containers.get(p['container'],{})
+            allowed=[ident for ident in dict.fromkeys(ids) if ident in records and not records[ident].get('folder')]
+            indexed=[]
+            for start in range(0,len(allowed),900):
+                chunk=allowed[start:start+900]
+                indexed.extend(row[0] for row in db.execute(
+                    'SELECT drive_id FROM items WHERE perfil_drive=? AND disponible=1 AND drive_id IN ('+','.join('?' for _ in chunk)+')',
+                    (container['perfil_drive'],*chunk)))
+            return indexed
+        if action=='container_update':
+            container=self._item(db,p['container'])
+            if container['tipo']!='curso': raise ValueError('No es un contenedor')
+            ident=str(p.get('id',''));field=p.get('field');value=p.get('value')
+            allowed={'es_favorito','rating','estado_lectura'}
+            if field not in allowed: raise ValueError('Propiedad del recurso no permitida')
+            record=self._containers.get(p['container'],{}).get(ident)
+            if not record:
+                self._dispatch(db,'container',{'id':p['container']})
+                record=self._containers.get(p['container'],{}).get(ident)
+            if not record or record.get('folder'): raise ValueError('El archivo ya no está en este contenedor')
+            if field=='es_favorito' and type(value) is not bool: raise ValueError('Favorito inválido')
+            if field=='rating' and (type(value) is not int or value not in range(6)): raise ValueError('Calificación inválida')
+            if field=='estado_lectura' and value not in ('pendiente','interesado','leyendo','leido','abandonado'):
+                raise ValueError('Estado de lectura inválido')
+            with db:
+                updated=db.execute('UPDATE items SET '+field+'=? WHERE drive_id=? AND perfil_drive=?',
+                                   (int(value) if field=='es_favorito' else value,ident,profile)).rowcount
+            if not updated: raise ValueError('Este archivo todavía no tiene propiedades de biblioteca')
+            return {'field':field,'value':int(value) if field=='es_favorito' else value}
         if action=='container_move_to_storage':
             container=self._item(db,p['container'])
             self._dispatch(db,'container',{'id':p['container']})

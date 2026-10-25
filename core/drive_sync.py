@@ -149,7 +149,7 @@ class DriveSync:
         check_cancelled()
         roots=meta.roots(ruta_raiz)
         if len(roots)!=1: raise SeleccionRequerida('Biblioteca raíz ausente o ambigua; no se modifica el catálogo')
-        root=roots[0]; rows=[]; entries=[]; skipped=0; visited=set()
+        root=roots[0]; rows=[]; entries=[]; skipped=0; visited=set();container_roots={}
 
         subtree_bytes={}; computing=set()
         def compute_size(ident):
@@ -200,6 +200,7 @@ class DriveSync:
                         'contenedor',
                         '',
                     ))
+                    container_roots[drive_id]=parts
                     container_id=drive_id
                 for cid in meta.children.get(ident,[]):
                     if cid in meta.nodes and meta.parts(cid):
@@ -207,7 +208,9 @@ class DriveSync:
                 return
 
             if container_id:
-                entries.append((container_id,drive_id,node['local_title'],
+                root_parts=container_roots.get(container_id,())
+                relative_parts=parts[len(root_parts):] if parts[:len(root_parts)]==root_parts else (node['local_title'],)
+                entries.append((container_id,drive_id,'/'.join(relative_parts),
                                 str(PureWindowsPath(*parts)),node['file_size'] or 0,
                                 node['mime_type'],perfil))
                 return
