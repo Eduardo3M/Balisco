@@ -3,7 +3,7 @@ name = "balisco"
 version = "0.1.0"
 description = "Biblioteca local sobre metadatos Google DriveFS"
 requires-python = ">=3.12"
-dependencies = ["send2trash>=1.8,<2", "pywebview>=6.2,<7", "Pillow>=12,<13"]
+dependencies = ["send2trash>=1.8,<2", "pywebview>=6.2,<7", "Pillow>=12,<13", "imageio-ffmpeg>=0.6,<0.7", "pypdfium2>=5,<6"]
 
 [project.optional-dependencies]
 build = ["pyinstaller>=6,<7"]

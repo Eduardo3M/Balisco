@@ -4,7 +4,7 @@ def normalizar(texto):
     return sorted({t.lstrip('+').casefold() for t in texto.split() if t.lstrip('+')})
 
 def obtener_etiquetas_ordenadas_frecuencia(conexion_db, perfil=None):
-    sql='SELECT etiquetas FROM items WHERE disponible=1'; params=[]
+    sql='SELECT etiquetas FROM items WHERE disponible=1 AND oculto=0'; params=[]
     if perfil is not None: sql+=' AND perfil_drive=?'; params=[perfil]
     counts=Counter(t for row in conexion_db.execute(sql,params) for t in normalizar(row[0]))
     return [dict(tag=t,total=n) for t,n in sorted(counts.items(),key=lambda x:(-x[1],x[0]))]

@@ -114,6 +114,7 @@ def desktop(debug=False):
         text_select=True
     )
     configure_close(window, api)
+    configure_container_drop(window, api)
 
     icon_arg = str(icon_path) if icon_path.is_file() else None
 
@@ -148,6 +149,52 @@ def watch_ui_changes(window, ui_dir, stop_event):
         except Exception:
             if not stop_event.is_set():
                 raise
+
+def configure_container_drop(window, api):
+    """Receive real Windows folder paths from WebView2 without reading file contents."""
+    from pathlib import Path
+    import threading
+    import time
+    import json
+
+    def dropped(event):
+        files=event.get('dataTransfer',{}).get('files',[])
+        for file in files:
+            path=file.get('pywebviewFullPath')
+            if not path: continue
+            source=Path(path)
+            if not source.is_dir() and not source.is_file():continue
+            folder=source.is_dir()
+            result=api.call('start_import',{'path':path})
+            if not result.get('ok'):
+                try:window.evaluate_js('window.balisco?.importRejected('+json.dumps(result.get('error','No se pudo iniciar la importación'),ensure_ascii=False)+')')
+                except Exception:pass
+                break
+            job=result['data']
+            try:window.evaluate_js('window.balisco?.importStarted('+json.dumps(job['name'],ensure_ascii=False)+','+json.dumps(job['kind'])+','+json.dumps(job['id'])+')')
+            except Exception:pass
+            def monitor(job_id=job['id'],item_name=job['name'],is_folder=folder):
+                while True:
+                    result=api.call('import_status',{'id':job_id})
+                    status=result.get('data',{}) if result.get('ok') else {'state':'error','error':result.get('error','No se pudo consultar el estado')}
+                    if status.get('state') in ('done','error','cancelled','unknown'):
+                        payload={'ok':status.get('state')=='done','cancelled':status.get('state')=='cancelled','id':job_id,'data':status.get('data',{}),'error':status.get('error')}
+                        try:window.evaluate_js('window.balisco?.importFinished('+json.dumps(payload,ensure_ascii=False)+')')
+                        except Exception:pass
+                        break
+                    time.sleep(.35)
+            threading.Thread(target=monitor,daemon=True).start()
+
+    def loaded():
+        try:
+            body=window.dom.get_element('body')
+            if body:
+                body.on('drop',dropped)
+                window.evaluate_js('if(window.balisco)window.balisco.nativeDrop=true')
+        except Exception:
+            pass
+
+    window.events.loaded += loaded
 
 def configure_close(window, api):
     """Connect native chrome and flush pending edits on every close path."""

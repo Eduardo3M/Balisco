@@ -2,6 +2,7 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from io import BytesIO
+import json
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -53,6 +54,122 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(self.call('query',tokens=['autor:María Sol'])['items'])
         self.assertFalse(self.api.call('bulk_metadata',{'ids':[ids[0],'test_drive_002'],'field':'etiquetas','operation':'add','value':'seguro'})['ok'])
         self.assertNotIn('+seguro',self.call('detail',id=ids[0])['etiquetas'])
+    def test_deep_search_returns_one_container_card_with_match(self):
+        with closing(self.api._connect()) as db:
+            with db:
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
+                           ('test_container','Mundodisco','curso',r'Mi unidad\Biblioteca\Containers\Mundodisco','test'))
+                db.execute("INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
+                           ('test_container','test_mort','Mort.pdf','internal','test'))
+        self.assertEqual(self.call('query',tokens=['Mort'])['items'],[])
+        with closing(self.api._connect()) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM container_entries_fts WHERE container_entries_fts MATCH 'Mort'").fetchone()[0],0)
+        self.call('set_deep_search',id='test_container',enabled=True)
+        rows=self.call('query',tokens=['Mort'])['items']
+        self.assertEqual([row['drive_id'] for row in rows],['test_container'])
+        self.assertEqual(rows[0]['coincidencia_interna'],['Mort.pdf'])
+        self.call('set_deep_search',id='test_container',enabled=False)
+        self.assertEqual(self.call('query',tokens=['Mort'])['items'],[])
+        with closing(self.api._connect()) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM container_entries_fts WHERE container_entries_fts MATCH 'Mort'").fetchone()[0],0)
+    def test_hidden_sort_and_taxonomy_edit(self):
+        with closing(self.api._connect()) as db:
+            db.execute("UPDATE items SET tamano_bytes=200,fecha_agregado='2020-01-01' WHERE drive_id='test_drive_001'")
+            db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,tamano_bytes,fecha_agregado) VALUES('test_drive_003','Grande','pdf','third.pdf','test',900,'2025-01-01')")
+            db.commit()
+        self.assertEqual([r['drive_id'] for r in self.call('query',tokens=['@orden:peso'])['items']],['test_drive_003','test_drive_001'])
+        self.call('set_hidden',id='test_drive_003',hidden=True)
+        self.assertEqual([r['drive_id'] for r in self.call('query')['items']],['test_drive_001'])
+        self.assertEqual([r['drive_id'] for r in self.call('query',tokens=['@ocultos'])['items']],['test_drive_003'])
+        self.call('set_hidden',id='test_drive_003',hidden=False)
+        self.call('update',id='test_drive_001',field='etiquetas',value='+historia')
+        self.assertEqual(self.call('taxonomy_edit',kind='tag',operation='rename',old='historia',new='arte')['updated'],1)
+        self.assertEqual(self.call('query',tokens=['+arte'])['items'][0]['drive_id'],'test_drive_001')
+        self.call('taxonomy_edit',kind='tag',operation='delete',old='arte')
+        self.assertEqual(self.call('query',tokens=['+arte'])['items'],[])
+    def test_assign_and_ungroup_physical_container(self):
+        library=self.root/'Mi unidad'/'Biblioteca'
+        folder=library/'Containers'/'Física'; folder.mkdir(parents=True)
+        source=library/'book.pdf'; source.write_bytes(b'book')
+        with closing(self.api._connect()) as db:
+            with db:
+                configurar(db,'unidad_drive:test',str(self.root))
+                db.execute("UPDATE items SET ruta_relativa=? WHERE drive_id='test_drive_001'",(r'Mi unidad\Biblioteca\book.pdf',))
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES('test_container','Física','curso',?,'test')",(r'Mi unidad\Biblioteca\Containers\Física',))
+        result=self.call('assign_container',ids=['test_drive_001'],container_id='test_container')
+        self.assertEqual(result['moved'],1)
+        self.assertTrue((folder/'book.pdf').is_file())
+        self.assertEqual(self.call('query')['items'][0]['drive_id'],'test_container')
+        self.assertEqual(self.call('ungroup_container',id='test_container')['released'],1)
+        self.assertTrue(source.is_file())
+        self.assertIn('test_drive_001',[r['drive_id'] for r in self.call('query')['items']])
+    def test_move_container_folder_to_storage_preserves_file_as_library_item(self):
+        library=self.root/'Mi unidad'/'Biblioteca';folder=library/'Containers'/'Course'/'Section';folder.mkdir(parents=True)
+        source=folder/'lesson.pdf';source.write_bytes(b'pdf bytes')
+        with closing(self.api._connect()) as db:
+            with db:
+                configurar(db,'unidad_drive:test',str(self.root))
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
+                           ('test_container','Course','curso',r'Mi unidad\Biblioteca\Containers\Course','test'))
+                db.execute("INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
+                           ('test_container','test_lesson','lesson.pdf',r'Mi unidad\Biblioteca\Containers\Course\Section\lesson.pdf','test'))
+        records={'folder_section':{'id':'folder_section','title':'Section','path':r'Mi unidad\Biblioteca\Containers\Course\Section','folder':True},
+                 'test_lesson':{'id':'test_lesson','title':'Section/lesson.pdf','path':r'Mi unidad\Biblioteca\Containers\Course\Section\lesson.pdf','size':9,'mime':'application/pdf'}}
+        original=self.api._dispatch
+        def dispatch(db,action,payload):
+            if action=='container':
+                self.api._containers[payload['id']]=records
+                return list(records.values())
+            return original(db,action,payload)
+        with patch.object(self.api,'_dispatch',side_effect=dispatch):
+            result=self.call('container_move_folder_to_storage',container='test_container',path=['Section'])
+        self.assertEqual(result['moved'],1)
+        self.assertFalse(folder.exists())
+        self.assertEqual((library/'Storage'/'Section'/'lesson.pdf').read_bytes(),b'pdf bytes')
+        with closing(self.api._connect()) as db:
+            item=db.execute("SELECT categoria_macro,ruta_relativa,disponible FROM items WHERE drive_id='test_lesson'").fetchone()
+            self.assertEqual(tuple(item),('Storage',r'Mi unidad\Biblioteca\Storage\Section\lesson.pdf',1))
+            self.assertIsNone(db.execute("SELECT 1 FROM container_entries WHERE drive_id='test_lesson'").fetchone())
+            move=db.execute("SELECT expected_relative,container_drive_id FROM pending_container_moves WHERE drive_id='test_lesson'").fetchone()
+            self.assertEqual(tuple(move),(r'Mi unidad\Biblioteca\Storage\Section\lesson.pdf',''))
+    def test_create_container_and_import_folder(self):
+        library=self.root/'Mi unidad'/'Biblioteca'; library.mkdir(parents=True)
+        source=library/'book.pdf'; source.write_bytes(b'book')
+        external=self.root/'Guías'; external.mkdir(); (external/'uno.pdf').write_bytes(b'one')
+        with closing(self.api._connect()) as db:
+            with db:
+                configurar(db,'unidad_drive:test',str(self.root))
+                db.execute("UPDATE items SET ruta_relativa=? WHERE drive_id='test_drive_001'",(r'Mi unidad\Biblioteca\book.pdf',))
+        with patch('core.container_ops.drive_id_for_path',side_effect=['test_container_new','test_imported']):
+            created=self.call('assign_container',ids=['test_drive_001'],name='Nuevo')
+            self.assertEqual(created['container_id'],'test_container_new')
+            self.assertTrue((library/'Containers'/'Nuevo'/'book.pdf').is_file())
+            imported=self.call('import_container',path=str(external))
+            self.assertEqual(imported['container_id'],'test_imported')
+            self.assertTrue((library/'Containers'/'Guías'/'uno.pdf').is_file())
+    def test_retry_container_creation_after_drive_metadata_delay(self):
+        library=self.root/'Mi unidad'/'Biblioteca'; library.mkdir(parents=True)
+        source=library/'book.pdf'; source.write_bytes(b'book')
+        with closing(self.api._connect()) as db:
+            with db:
+                configurar(db,'unidad_drive:test',str(self.root))
+        (library/'Containers'/'Pendiente').mkdir(parents=True)
+        with patch('core.container_ops.drive_id_for_path',return_value='test_pending'):
+            result=self.call('assign_container',ids=['test_drive_001'],name='Pendiente')
+        self.assertEqual(result['moved'],1)
+        self.assertTrue((library/'Containers'/'Pendiente'/'book.pdf').is_file())
+    def test_similar_uses_tags_authors_then_size(self):
+        with closing(self.api._connect()) as db:
+            with db:
+                db.execute("UPDATE items SET etiquetas='+arte',autor='Ana',tamano_bytes=1000 WHERE drive_id='test_drive_001'")
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,etiquetas,tamano_bytes) VALUES('test_drive_003','Arte','pdf','a.pdf','test','+arte',900)")
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,tamano_bytes) VALUES('test_drive_004','Tamaño','pdf','b.pdf','test',950)")
+        result=self.call('similar',id='test_drive_001')
+        self.assertEqual(result['ids'][0],'test_drive_001')
+        self.assertEqual(result['ids'][1],'test_drive_003')
+        with closing(self.api._connect()) as db:
+            with db: db.execute("UPDATE items SET etiquetas='' WHERE drive_id='test_drive_003'")
+        self.assertEqual(self.call('similar',id='test_drive_001')['basis'],'tamaño')
     def test_favorites_states_and_multiple_authors_persist(self):
         self.call('update',id='test_drive_001',field='autor',value='Ana Torres\nLuis Vega\nana torres')
         self.call('update',id='test_drive_001',field='es_favorito',value=1)
@@ -60,7 +177,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(self.call('detail',id='test_drive_001')['autor'],'Ana Torres\nLuis Vega')
         self.assertEqual(len(self.call('query',tokens=['@favoritos','@leyendo'])['items']),1)
         self.assertEqual(len(self.call('query',tokens=['Luis'])['items']),1)
-        self.assertEqual(len(self.call('query',tokens=['@favoritos','@pendiente'])['items']),1)
+        self.assertEqual(len(self.call('query',tokens=['@favoritos','@pendiente'])['items']),0)
         reopened=DesktopAPI(self.root)
         self.assertEqual(reopened.call('detail',{'id':'test_drive_001'})['data']['es_favorito'],1)
         self.assertEqual(reopened.call('detail',{'id':'test_drive_001'})['data']['autor'],'Ana Torres\nLuis Vega')
@@ -83,7 +200,7 @@ class DesktopTests(unittest.TestCase):
         with patch('core.items_manager.webbrowser.open',return_value=True) as opener:
             self.call('open',id='test_drive_001',mode='web')
             opener.assert_called_once_with('https://drive.google.com/file/d/test_drive_001/view')
-        self.assertFalse(self.api.call('course_open',{'course':'test_drive_001','id':'unknown'})['ok'])
+        self.assertFalse(self.api.call('container_open',{'container':'test_drive_001','id':'unknown'})['ok'])
     def test_course_metadata_only_and_scoped_launch(self):
         source=self.root/'drivefs.db'
         def proto(value):
@@ -100,14 +217,14 @@ class DesktopTests(unittest.TestCase):
                 configurar(db,'unidad_drive:test',str(self.root))
         profiles=[{'id':'test','ruta_db':str(source),'tiene_biblioteca':True}]
         with patch('core.desktop_api.detectar_perfiles_drive',return_value=profiles):
-            resources=self.call('course',id='course_id_3')
+            resources=self.call('container',id='course_id_3')
             self.assertEqual(len(resources),1);self.assertEqual(resources[0]['title'],'Tema / leccion.mp4')
             with patch('core.desktop_api.os.startfile',create=True) as launch:
-                self.call('course_open',course='course_id_3',id='course_id_5',mode='local')
+                self.call('container_open',container='course_id_3',id='course_id_5',mode='local')
                 self.assertIn('leccion.mp4',launch.call_args.args[0])
             with closing(sqlite3.connect(source)) as db:
                 with db:db.execute('UPDATE items SET trashed=1 WHERE stable_id=5')
-            self.assertFalse(self.api.call('course_trash',{'course':'course_id_3','id':'course_id_5'})['ok'])
+            self.assertFalse(self.api.call('container_trash',{'container':'course_id_3','id':'course_id_5'})['ok'])
 
     def test_preferences_validation(self):
         self.call('preference',key='tema',value='light')
@@ -122,18 +239,28 @@ class DesktopTests(unittest.TestCase):
             self.assertFalse(self.api.call('preference',{'key':key,'value':value})['ok'])
 
     def test_wallpaper_operations(self):
-        try:
-            buf=BytesIO(); Image.new('RGB',(60,60),(30,40,50)).save(buf,'JPEG')
-            res=self.call('save_wallpaper',name='custom_test.jpg',data=base64.b64encode(buf.getvalue()).decode())
-            self.assertEqual(res['filename'],'custom_test.jpg')
-            self.call('preference',key='wallpaper',value='custom_test.jpg')
-            self.assertEqual(self.call('bootstrap')['prefs']['wallpaper'],'custom_test.jpg')
-            data_url=self.call('get_wallpaper',filename='custom_test.jpg')
-            self.assertTrue(data_url.startswith('data:image/jpeg;base64,'))
-            wp_list=self.call('wallpapers_list')
-            self.assertTrue(any(w['filename']=='custom_test.jpg' for w in wp_list))
-        finally:
-            (Path(__file__).parent.parent/'wallpapers'/'custom_test.jpg').unlink(missing_ok=True)
+        buf=BytesIO(); Image.new('RGB',(60,60),(30,40,50)).save(buf,'JPEG')
+        res=self.call('save_wallpaper',name='custom_test.jpg',data=base64.b64encode(buf.getvalue()).decode())
+        self.assertEqual(res['filename'],'custom_test.jpg')
+        self.call('preference',key='wallpaper',value='custom_test.jpg')
+        self.assertEqual(self.call('bootstrap')['prefs']['wallpaper'],'custom_test.jpg')
+        data_url=self.call('get_wallpaper',filename='custom_test.jpg')
+        self.assertTrue(data_url.startswith('data:image/jpeg;base64,'))
+        wp_list=self.call('wallpapers_list')
+        self.assertTrue(any(w['filename']=='custom_test.jpg' and w['removable'] for w in wp_list))
+        self.call('set_wallpaper_centered',filename='custom_test.jpg',centered=False)
+        self.assertEqual(json.loads(self.call('bootstrap')['prefs']['wallpaper_positions']),{'custom_test.jpg':False})
+        self.assertFalse(next(w for w in self.call('wallpapers_list') if w['filename']=='custom_test.jpg')['centered'])
+        self.assertTrue(self.call('delete_wallpaper',filename='custom_test.jpg')['active'])
+        self.assertEqual(self.call('bootstrap')['prefs']['wallpaper'],'')
+        self.assertIsNone(self.call('get_wallpaper',filename='custom_test.jpg'))
+        self.assertFalse(self.api.call('delete_wallpaper',{'filename':'../biblioteca.db'})['ok'])
+
+    def test_rating_filter_is_exact(self):
+        self.call('update',id='test_drive_001',field='rating',value=5)
+        self.assertEqual(len(self.call('query',tokens=['@rating:5'])['items']),1)
+        for rating in range(1,5):
+            self.assertEqual(self.call('query',tokens=[f'@rating:{rating}'])['items'],[])
 
 class MigrationTests(unittest.TestCase):
     def test_legacy_upgrade_preserves_notes_and_builds_author_index(self):

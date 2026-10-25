@@ -120,17 +120,24 @@ def obtener_letra_drive():
     if len(matches)!=1: raise SeleccionRequerida('Unidad ausente o ambigua; configura unidad_drive para el perfil activo')
     return matches[0]
 
-MEDIA_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.webm', '.blend', '.psd', '.aep', '.prproj', '.flv'}
-BOOK_EXTENSIONS = {'.pdf', '.epub'}
-LESSON_RE = re.compile(
-    r'^(?:(?:0?[1-9]|1[0-9]|20)[\.\s_\-]|(?:section|seccion|modulo|module|chapter|capitulo|part|parte|day|dia|week|semana|lesson|leccion)\s*(?:0?[1-9]|1[0-9]|20)\b)',
-    re.I
-)
-RESOURCE_NAMES = {'materials', 'resources', 'assets', 'project files', 'exercises', 'source files', 'recursos', 'recursos adicionales'}
+MEDIA_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v', '.mpeg', '.mpg', '.3gp', '.3g2', '.ts', '.m2ts', '.mts', '.vob', '.ogv', '.asf'}
+BOOK_EXTENSIONS = {'.pdf', '.epub', '.azw', '.azw3', '.mobi', '.kfx', '.fb2', '.djvu', '.djv', '.cbz', '.cbr', '.cb7', '.lit', '.pdb', '.txt', '.rtf', '.lrf', '.kepub'}
+AUDIO_EXTENSIONS = {'.mp3', '.m4a', '.aac', '.flac', '.wav', '.ogg', '.oga', '.opus', '.wma', '.aiff', '.aif', '.alac', '.ape', '.amr', '.mid', '.midi', '.m4b'}
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tif', '.tiff', '.heic', '.heif', '.avif', '.svg', '.ico', '.jxl', '.jp2', '.j2k', '.apng', '.raw', '.dng', '.cr2', '.nef', '.arw'}
+
+def classify_file(name, allow_other=False):
+    ext=Path(name).suffix.casefold()
+    if ext in BOOK_EXTENSIONS:return 'pdf'
+    if ext in MEDIA_EXTENSIONS:return 'video'
+    if ext in AUDIO_EXTENSIONS:return 'audio'
+    if ext in IMAGE_EXTENSIONS:return 'imagen'
+    return 'archivo' if allow_other else None
 
 class DriveSync:
     def __init__(self,db): self.db=db
-    def sincronizar_biblioteca(self,ruta_raiz='Biblioteca',ruta_db=None,perfil=None):
+    def sincronizar_biblioteca(self,ruta_raiz='Biblioteca',ruta_db=None,perfil=None,cancel_check=None):
+        check_cancelled=cancel_check or (lambda:None)
+        check_cancelled()
         if ruta_db is None:
             profiles=detectar_perfiles_drive(); perfil=perfil or obtener_o_seleccionar_perfil_activo(self.db,profiles)
             ruta_db=next(p['ruta_db'] for p in profiles if p['id']==perfil)
@@ -139,59 +146,31 @@ class DriveSync:
         try:
             source.execute('BEGIN'); meta=Metadata(source)
         finally: source.close()
+        check_cancelled()
         roots=meta.roots(ruta_raiz)
         if len(roots)!=1: raise SeleccionRequerida('Biblioteca raíz ausente o ambigua; no se modifica el catálogo')
-        root=roots[0]; rows=[]; skipped=0; visited=set()
-        overrides=set(json.loads(preferencia(self.db,'cursos:'+perfil,'[]')))
+        root=roots[0]; rows=[]; entries=[]; skipped=0; visited=set()
 
-        media_count={}; subtree_bytes={}; computing=set()
-        def compute_stats(ident):
-            if ident in media_count: return media_count[ident], subtree_bytes[ident]
-            if ident in computing: return 0, 0
+        subtree_bytes={}; computing=set()
+        def compute_size(ident):
+            check_cancelled()
+            if ident in subtree_bytes: return subtree_bytes[ident]
+            if ident in computing: return 0
             computing.add(ident)
             node=meta.nodes.get(ident)
-            if not node:
-                computing.remove(ident); return 0, 0
-            m_cnt=0; s_bytes=node['file_size'] or 0
-            if node['is_folder']:
-                for cid in meta.children.get(ident,[]):
-                    if cid in meta.nodes and meta.parts(cid):
-                        c_mc,c_sb=compute_stats(cid)
-                        m_cnt+=c_mc; s_bytes+=c_sb
-            else:
-                ext=Path(node['local_title']).suffix.lower()
-                if ext in MEDIA_EXTENSIONS: m_cnt+=1
+            size=(node['file_size'] or 0) if node else 0
+            if node and node['is_folder']:
+                size+=sum(compute_size(cid) for cid in meta.children.get(ident,[])
+                          if cid in meta.nodes and meta.parts(cid))
             computing.remove(ident)
-            media_count[ident]=m_cnt
-            subtree_bytes[ident]=s_bytes
-            return m_cnt, s_bytes
+            subtree_bytes[ident]=size
+            return size
 
-        compute_stats(root)
+        compute_size(root)
 
-        def is_course(ident, parts, drive_id):
-            node=meta.nodes.get(ident)
-            if not node or not node['is_folder']: return False
-            if drive_id in overrides: return True
-            if media_count.get(ident,0)==0: return False
-            depth=len(parts)
-            valid_children=[meta.nodes[c] for c in meta.children.get(ident,[]) if c in meta.nodes and meta.parts(c)]
-            has_direct_media=any(Path(c['local_title']).suffix.lower() in MEDIA_EXTENSIONS for c in valid_children if not c['is_folder'])
-            name=node['local_title'].strip()
-            if depth<=3:
-                if depth==3 and (has_direct_media or bool(re.search(r'\b(curso|course)\b',name,re.I))):
-                    return True
-                return False
-            if depth==4:
-                if has_direct_media: return True
-                if re.search(r'\b(curso|course|bootcamp)\b',name,re.I): return True
-                child_folders=[c for c in valid_children if c['is_folder']]
-                lesson_like=sum(1 for c in child_folders if LESSON_RE.match(c['local_title'].strip()) or c['local_title'].strip().lower() in RESOURCE_NAMES)
-                if lesson_like>=2: return True
-                return False
-            return True
-
-        def visit(ident):
+        def visit(ident, container_id=None):
             nonlocal skipped
+            check_cancelled()
             if ident in visited: return
             visited.add(ident)
             node=meta.nodes[ident]; parts=meta.parts(ident)
@@ -200,7 +179,8 @@ class DriveSync:
             except (ValueError,UnicodeError): skipped+=1; return
 
             if node['is_folder']:
-                if is_course(ident,parts,drive_id):
+                in_containers=len(parts)==4 and parts[2].casefold()=='containers'
+                if container_id is None and in_containers:
                     categories=parts[2:-1]
                     cat_macro=categories[0] if categories else 'General'
                     subcat=' / '.join(categories[1:])
@@ -216,21 +196,31 @@ class DriveSync:
                         'portadas/'+drive_id+'.jpg',
                         subtree_bytes.get(ident,0),
                         node['mime_type'],
-                        perfil
+                        perfil,
+                        'contenedor',
+                        '',
                     ))
-                    return
+                    container_id=drive_id
                 for cid in meta.children.get(ident,[]):
                     if cid in meta.nodes and meta.parts(cid):
-                        visit(cid)
+                        visit(cid,container_id)
+                return
+
+            if container_id:
+                entries.append((container_id,drive_id,node['local_title'],
+                                str(PureWindowsPath(*parts)),node['file_size'] or 0,
+                                node['mime_type'],perfil))
                 return
 
             ext=Path(node['local_title']).suffix.lower()
-            tipo='pdf' if ext in BOOK_EXTENSIONS else 'video' if ext in MEDIA_EXTENSIONS else None
+            in_storage=len(parts)>=4 and parts[2].casefold()=='storage'
+            archive_in_containers=len(parts)==4 and parts[2].casefold()=='containers' and ext in {'.zip','.rar'}
+            tipo=classify_file(node['local_title'],allow_other=in_storage or archive_in_containers)
             if tipo is None: return
             categories=parts[2:-1]
             cat_macro=categories[0] if categories else 'General'
             subcat=' / '.join(categories[1:])
-            c_title, c_author = clean_book_title_and_author(node['local_title'], tipo)
+            c_title, c_author = clean_book_title_and_author(node['local_title'], tipo) if tipo=='pdf' else (Path(node['local_title']).stem,'')
             rows.append((
                 drive_id,
                 c_title,
@@ -242,19 +232,55 @@ class DriveSync:
                 'portadas/'+drive_id+'.jpg',
                 node['file_size'] or 0,
                 node['mime_type'],
-                perfil
+                perfil,
+                'contenedor' if archive_in_containers else 'documento' if tipo=='pdf' else 'otro' if tipo=='archivo' else tipo,
+                ext.lstrip('.').upper(),
             ))
 
-        for child in meta.children.get(root,[]): visit(child)
+        for child in meta.children.get(root,[]):
+            check_cancelled();visit(child)
+        pending=list(self.db.execute("SELECT * FROM pending_container_moves WHERE perfil_drive=? AND created_at>=datetime('now','-1 day')",(perfil,)))
+        observed={row[0]:row[6] for row in rows}
+        observed.update({entry[1]:entry[3] for entry in entries})
+        resolved=[]
+        for move in pending:
+            check_cancelled()
+            ident=move['drive_id']; expected=move['expected_relative']; target=move['container_drive_id']
+            if (target=='__removed__' and ident not in observed) or (target!='__removed__' and observed.get(ident,'').casefold()==expected.casefold()):
+                resolved.append(ident); continue
+            rows=[row for row in rows if row[0]!=ident]
+            entries=[entry for entry in entries if entry[1]!=ident]
+            if target=='__removed__':
+                entries=[entry for entry in entries if entry[0]!=ident]
+            elif target:
+                old=self.db.execute('SELECT container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive FROM container_entries WHERE drive_id=?',(ident,)).fetchone()
+                if old: entries.append(tuple(old))
+            else:
+                old=self.db.execute('''SELECT drive_id,titulo,autor,tipo,categoria_macro,subcategoria,ruta_relativa,
+                    ruta_portada,tamano_bytes,mime_type,perfil_drive,tipo_contenido,formato FROM items WHERE drive_id=?''',(ident,)).fetchone()
+                if old: rows.append(tuple(old))
+        check_cancelled()
         with self.db:
+            check_cancelled()
+            self.db.execute("DELETE FROM pending_container_moves WHERE perfil_drive=? AND created_at<datetime('now','-1 day')",(perfil,))
+            self.db.executemany('DELETE FROM pending_container_moves WHERE drive_id=?',[(ident,) for ident in resolved])
             if not skipped: self.db.execute('UPDATE items SET disponible=0 WHERE perfil_drive=?',(perfil,))
-            self.db.executemany("""INSERT INTO items(drive_id,titulo,autor,tipo,categoria_macro,subcategoria,ruta_relativa,ruta_portada,tamano_bytes,mime_type,perfil_drive)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
+            self.db.executemany("""INSERT INTO items(drive_id,titulo,autor,tipo,categoria_macro,subcategoria,ruta_relativa,ruta_portada,tamano_bytes,mime_type,perfil_drive,tipo_contenido,formato)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
               titulo=CASE WHEN items.titulo_personalizado=1 THEN items.titulo ELSE excluded.titulo END,
               autor=CASE WHEN items.autor != '' THEN items.autor ELSE excluded.autor END,
-              tipo=excluded.tipo,categoria_macro=excluded.categoria_macro,subcategoria=excluded.subcategoria,
+              tipo=excluded.tipo,tipo_contenido=excluded.tipo_contenido,formato=excluded.formato,categoria_macro=excluded.categoria_macro,subcategoria=excluded.subcategoria,
               ruta_relativa=excluded.ruta_relativa,ruta_portada=excluded.ruta_portada,tamano_bytes=excluded.tamano_bytes,
-              mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive,disponible=1""",rows)
+              mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive,
+              disponible=1""",rows)
+            check_cancelled()
+            if not skipped: self.db.execute('DELETE FROM container_entries WHERE perfil_drive=?',(perfil,))
+            self.db.executemany('''INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive)
+                VALUES(?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
+                container_drive_id=excluded.container_drive_id,titulo=excluded.titulo,
+                ruta_relativa=excluded.ruta_relativa,tamano_bytes=excluded.tamano_bytes,
+                mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive''',entries)
+            check_cancelled()
             configurar(self.db,'id_perfil_drive',perfil)
         return dict(indexados=len(rows),omitidos_proto=skipped,perfil=perfil)
     def exportar_libros(self,destino):

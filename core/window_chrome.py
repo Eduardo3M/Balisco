@@ -21,6 +21,13 @@ SW_HIDE, SW_SHOWMAXIMIZED, SW_SHOWNORMAL = 0, 3, 1
 GWL_STYLE = -16
 WS_SYSMENU, WS_MINIMIZEBOX, WS_MAXIMIZEBOX = 0x00080000, 0x00020000, 0x00010000
 WS_THICKFRAME = 0x00040000
+WS_CAPTION = 0x00C00000
+WM_NCCALCSIZE = 0x0083
+SWP_FRAMECHANGED = 0x0020
+SWP_NOMOVE = 0x0002
+SWP_NOSIZE = 0x0001
+SWP_NOZORDER = 0x0004
+AW_HIDE, AW_BLEND = 0x00010000, 0x00080000
 MONITOR_DEFAULTTONEAREST = 2
 # Códigos WMSZ_* que se suman a SC_SIZE para indicar el borde arrastrado.
 EDGES = {'left': 1, 'right': 2, 'top': 3, 'topleft': 4, 'topright': 5,
@@ -43,8 +50,20 @@ class MONITORINFO(ctypes.Structure):
                 ('rcWork', RECT), ('dwFlags', wintypes.DWORD)]
 
 
+class NCCALCSIZE_PARAMS(ctypes.Structure):
+    _fields_ = [('rgrc', RECT * 3), ('lppos', ctypes.c_void_p)]
+
+
 if IS_WIN:
     user32 = ctypes.WinDLL('user32', use_last_error=True)
+    comctl32 = ctypes.WinDLL('comctl32', use_last_error=True)
+    SUBCLASSPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT,
+                                      wintypes.WPARAM, wintypes.LPARAM, ctypes.c_size_t, ctypes.c_size_t)
+    comctl32.SetWindowSubclass.argtypes = [wintypes.HWND, SUBCLASSPROC, ctypes.c_size_t, ctypes.c_size_t]
+    comctl32.SetWindowSubclass.restype = wintypes.BOOL
+    comctl32.DefSubclassProc.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    comctl32.DefSubclassProc.restype = ctypes.c_ssize_t
+    comctl32.RemoveWindowSubclass.argtypes = [wintypes.HWND, SUBCLASSPROC, ctypes.c_size_t]
     user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
     user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
@@ -63,6 +82,8 @@ if IS_WIN:
     user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
     user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
                                     ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    user32.AnimateWindow.argtypes = [wintypes.HWND, wintypes.DWORD, wintypes.DWORD]
+    user32.AnimateWindow.restype = wintypes.BOOL
 
 
 def _pack_point(x, y):
@@ -78,6 +99,7 @@ class WindowChrome:
         self._maximized = None
         self._lock = threading.Lock()
         self._snap_restore = None
+        self._subclass_proc = None
 
     # ---- infraestructura -------------------------------------------------
     def _native(self):
@@ -127,9 +149,28 @@ class WindowChrome:
         """Llamar desde `before_show` (hilo UI, antes de mostrarse)."""
         if not (IS_WIN and self.resolve()):
             return
+        # Windows anima minimizar/restaurar solamente con los estilos de una
+        # ventana normal. El callback quita el área no cliente (título y borde)
+        # para que el WebView siga ocupando toda la ventana.
+        def chrome_proc(hwnd, message, wparam, lparam, subclass_id, ref_data):
+            if message == WM_NCCALCSIZE and wparam:
+                params = ctypes.cast(lparam, ctypes.POINTER(NCCALCSIZE_PARAMS)).contents
+                if user32.IsZoomed(hwnd):
+                    monitor = user32.MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
+                    info = MONITORINFO(); info.cbSize = ctypes.sizeof(info)
+                    if monitor and user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+                        params.rgrc[0] = info.rcWork
+                return 0
+            return comctl32.DefSubclassProc(hwnd, message, wparam, lparam)
+
+        self._subclass_proc = SUBCLASSPROC(chrome_proc)
+        if not comctl32.SetWindowSubclass(self.hwnd, self._subclass_proc, 1, 0):
+            raise ctypes.WinError(ctypes.get_last_error())
         style = user32.GetWindowLongW(self.hwnd, GWL_STYLE)
-        # Permite minimizar/restaurar desde la barra de tareas, Aero Snap nativo y Win+flechas.
-        user32.SetWindowLongW(self.hwnd, GWL_STYLE, style | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX)
+        user32.SetWindowLongW(self.hwnd, GWL_STYLE,
+                              style | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX)
+        user32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0,
+                            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)
         self._fit_maximized_bounds()
         self._monitor = user32.MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST)
 
@@ -266,7 +307,11 @@ class WindowChrome:
 
     def hide(self):
         if IS_WIN and self.resolve():
-            user32.ShowWindow(self.hwnd, SW_HIDE)
+            # El guardado ya terminó; una breve salida visual evita el cierre brusco.
+            def animate_hide():
+                if not user32.AnimateWindow(self.hwnd, 160, AW_HIDE | AW_BLEND):
+                    user32.ShowWindow(self.hwnd, SW_HIDE)
+            self._ui(animate_hide)
 
     # ---- persistencia ------------------------------------------------------
     def geometry(self):

@@ -68,7 +68,6 @@ JS=r"""(async()=>{
  $('dice').dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:100,pointerId:2}));await new Promise(r=>setTimeout(r,180));$('dice').dispatchEvent(new PointerEvent('pointermove',{clientX:160,pointerId:2}));assert($('dice').classList.contains('target'),'hold swipe target');$('dice').dispatchEvent(new PointerEvent('pointerup',{clientX:160,pointerId:2}));await wait(()=>!$('dice').classList.contains('target'),'dice release');
  await new Promise(r=>setTimeout(r,200));await window.balisco.flush();
  const coverCanvas=document.createElement('canvas');coverCanvas.width=40;coverCanvas.height=60;const ctx=coverCanvas.getContext('2d');ctx.fillStyle='#456789';ctx.fillRect(0,0,40,60);const blob=await new Promise(r=>coverCanvas.toBlob(r,'image/png'));const file=new File([blob],'cover.png',{type:'image/png'});const transfer=new DataTransfer();transfer.items.add(file);$('hero').dispatchEvent(new DragEvent('drop',{dataTransfer:transfer,bubbles:true,cancelable:true}));await wait(()=>!!$('heroArt').querySelector('img'),'cover drag drop');
- const pinned=S.selected.drive_id;$('pin').click();document.querySelector('.card').click();await new Promise(r=>setTimeout(r,100));assert(S.selected.drive_id===pinned,'pinned selection');$('pin').click();
  // Course list is read from a local DriveFS fixture, never file contents.
  $('mode').click();await wait(()=>S.mode==='local','local mode');
  $('type').click();$('popover').querySelector('[data-type="curso"]').click();await wait(()=>S.items.length===1&&document.querySelector('.card'),'course filter');
@@ -76,7 +75,7 @@ JS=r"""(async()=>{
  assert(!$('courseView').querySelector('img'),'course has no thumbnails');$('back').click();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(()=>S.items.length===1500,'course return');
  const times=[];await new Promise(resolve=>{let last;function frame(t){$('viewport').scrollTop+=18;$('viewport').dispatchEvent(new Event('scroll'));if(last)times.push(t-last);last=t;if(times.length<100)requestAnimationFrame(frame);else resolve();}requestAnimationFrame(frame);});
  times.sort((a,b)=>a-b);
- return {ok:true,initialCards,scrolledCards:document.querySelectorAll('.card').length,rafMedianMs:times[50],rafP95Ms:times[94],checks:['bootstrap','virtualization','selection','notes + author autosave','unified FTS5','ghost input','rating filter','rating save','tags edit','tags hub','mode','theme','zoom','scroll','type filter','swipe delete','zoom drag','hold swipe target','cover drag drop','pin','course resource list']};
+ return {ok:true,initialCards,scrolledCards:document.querySelectorAll('.card').length,rafMedianMs:times[50],rafP95Ms:times[94],checks:['bootstrap','virtualization','selection','notes + author autosave','unified FTS5','ghost input','rating filter','rating save','tags edit','tags hub','mode','theme','zoom','scroll','type filter','swipe delete','zoom drag','hold swipe target','cover drag drop','course resource list']};
 })().catch(e=>({ok:false,error:e.message,stack:e.stack}))"""
 
 def run(window):

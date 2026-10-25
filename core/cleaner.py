@@ -17,7 +17,7 @@ def clean_book_title_and_author(raw_name: str, tipo: str = 'pdf'):
     name = raw_name.strip()
 
     # 1. Quitar extensiones de archivo
-    name = re.sub(r'\.(pdf|epub|mobi|azw3?|djvu)$', '', name, flags=re.I).strip()
+    name = re.sub(r'\.(pdf|epub|azw3?|mobi|kfx|fb2|djvu?|cbz|cbr|cb7|lit|pdb|txt|rtf|lrf|kepub)$', '', name, flags=re.I).strip()
 
     # 2. Quitar prefijos de webs comunes (ej: pdfcoffee.com_)
     name = re.sub(r'^(?:pdfcoffee\.com|libgen\.[a-z]+|z-lib(?:rary)?\.[a-z]+)[_\s-]+', '', name, flags=re.I).strip()

@@ -12,6 +12,7 @@ from core.tags_manager import TagsManager, obtener_etiquetas_ordenadas_frecuenci
 from core.serendipity import obtener_semi_aleatorio_contextual
 from core.backup_manager import crear_backup_en_drive
 from core.cleaner import limpiar_biblioteca_db
+from core.desktop_api import DesktopAPI
 
 
 def proto(ident, parent=None):
@@ -27,7 +28,7 @@ class CoreTests(unittest.TestCase):
         self.source=self.root/'metadata_sqlite_db'
         c=sqlite3.connect(self.source)
         c.executescript('CREATE TABLE items(stable_id INTEGER PRIMARY KEY, local_title TEXT,is_folder INT,mime_type TEXT,file_size INT,trashed INT,proto BLOB); CREATE TABLE stable_parents(item_stable_id INT,parent_stable_id INT);')
-        for i,title,folder,parent in [(1,'Mi unidad',1,None),(2,'Biblioteca',1,1),(3,'Historia',1,2),(4,'Roma.pdf',0,3),(5,'.balisco_backup',1,2),(6,'secreto.pdf',0,5),(7,'Curso Blender',1,2),(8,'capitulo.mp4',0,7),(9,'.oculto',1,2),(10,'oculto.pdf',0,9)]:
+        for i,title,folder,parent in [(1,'Mi unidad',1,None),(2,'Biblioteca',1,1),(3,'Historia',1,2),(4,'Roma.pdf',0,3),(5,'.balisco_backup',1,2),(6,'secreto.pdf',0,5),(7,'Curso Blender',1,11),(8,'capitulo.mp4',0,7),(9,'.oculto',1,2),(10,'oculto.pdf',0,9),(11,'Containers',1,2)]:
             ident='drive_id_'+str(i).zfill(3)
             c.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',(i,title,folder,'application/pdf',100,0,proto(ident)))
             if parent: c.execute('INSERT INTO stable_parents VALUES(?,?)',(i,parent))
@@ -38,7 +39,20 @@ class CoreTests(unittest.TestCase):
     def run_sync(self): return self.sync.sincronizar_biblioteca(ruta_db=self.source,perfil='fixture')
     def test_exclusions_and_course_boundary(self):
         self.assertEqual([r[0] for r in self.db.execute('SELECT titulo FROM items ORDER BY titulo')],['Curso Blender','Roma'])
+        self.assertEqual([r['titulo'] for r in buscar(self.db,limpiar_todos_filtros())],['Curso Blender','Roma'])
         self.assertEqual(self.db.execute("SELECT categoria_macro FROM items WHERE tipo='pdf'").fetchone()[0],'Historia')
+    def test_document_type_and_epub_format_are_independent(self):
+        source=sqlite3.connect(self.source)
+        source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                       (12,'Fundamental Accessibility Tests.epub',0,'application/epub+zip',256,0,proto('drive_id_012')))
+        source.execute('INSERT INTO stable_parents VALUES(?,?)',(12,3))
+        source.commit(); source.close()
+        self.run_sync()
+        item=self.manager.obtener('drive_id_012')
+        self.assertEqual((item['tipo_contenido'],item['formato']),('documento','EPUB'))
+        filters=agregar_filtro('@tipo:documento',limpiar_todos_filtros())
+        self.assertEqual({row['drive_id'] for row in buscar(self.db,filters,perfil='fixture')},
+                         {'drive_id_004','drive_id_012'})
     def test_sync_preserves_metadata_and_repairs_path(self):
         self.manager.actualizar_notas('drive_id_004','Mi apunte único')
         self.manager.cambiar_rating('drive_id_004',5)
@@ -109,7 +123,36 @@ class CoreTests(unittest.TestCase):
         c=sqlite3.connect(self.source); c.execute("UPDATE items SET local_title='Blender 3D' WHERE stable_id=7"); c.commit(); c.close()
         self.run_sync()
         self.assertEqual(self.manager.obtener('drive_id_007')['tipo'],'curso')
-        self.assertIsNone(self.db.execute("SELECT id FROM items WHERE drive_id='drive_id_008'").fetchone())
+        self.assertEqual(self.db.execute("SELECT container_drive_id FROM container_entries WHERE drive_id='drive_id_008'").fetchone()[0],'drive_id_007')
+        self.assertNotIn('drive_id_008',[r['drive_id'] for r in buscar(self.db,limpiar_todos_filtros())])
+    def test_deep_search_switch_and_nested_titles(self):
+        c=sqlite3.connect(self.source)
+        c.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',(12,'Materials',1,'application/octet-stream',0,0,proto('drive_id_012')))
+        c.execute('INSERT INTO stable_parents VALUES(?,?)',(12,7))
+        c.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',(13,'Mort.pdf',0,'application/pdf',100,0,proto('drive_id_013')))
+        c.execute('INSERT INTO stable_parents VALUES(?,?)',(13,12))
+        c.commit(); c.close(); self.run_sync()
+        filters=agregar_filtro('Mort',limpiar_todos_filtros())
+        self.assertEqual(buscar(self.db,filters),[])
+        api=DesktopAPI(self.root)
+        self.assertTrue(api.call('set_deep_search',{'id':'drive_id_007','enabled':True})['ok'])
+        self.assertEqual([r['drive_id'] for r in buscar(self.db,filters)],['drive_id_007'])
+        self.assertEqual(self.db.execute("SELECT count(*) FROM items WHERE drive_id='drive_id_013'").fetchone()[0],0)
+        c=sqlite3.connect(self.source)
+        c.execute("UPDATE items SET local_title='Ritos iguales.pdf' WHERE stable_id=13")
+        c.commit(); c.close(); self.run_sync()
+        self.assertEqual(buscar(self.db,filters),[])
+        self.assertEqual([r['drive_id'] for r in buscar(self.db,agregar_filtro('Ritos',limpiar_todos_filtros()))],['drive_id_007'])
+        self.assertTrue(api.call('set_deep_search',{'id':'drive_id_007','enabled':False})['ok'])
+        self.assertEqual(buscar(self.db,agregar_filtro('Ritos',limpiar_todos_filtros())),[])
+    def test_pending_move_survives_stale_drive_metadata(self):
+        with self.db:
+            self.db.execute("UPDATE items SET disponible=0 WHERE drive_id='drive_id_004'")
+            self.db.execute("INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,perfil_drive) VALUES('drive_id_007','drive_id_004','Roma.pdf',?, 'fixture')",(r'Mi unidad\Biblioteca\Containers\Curso Blender\Roma.pdf',))
+            self.db.execute("INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive) VALUES('drive_id_004',?,'drive_id_007','fixture')",(r'Mi unidad\Biblioteca\Containers\Curso Blender\Roma.pdf',))
+        self.run_sync()
+        self.assertEqual(self.manager.obtener('drive_id_004')['disponible'],0)
+        self.assertEqual(self.db.execute("SELECT container_drive_id FROM container_entries WHERE drive_id='drive_id_004'").fetchone()[0],'drive_id_007')
     def test_remote_title_refresh(self):
         c=sqlite3.connect(self.source); c.execute("UPDATE items SET local_title='Roma nueva.pdf' WHERE stable_id=4"); c.commit(); c.close()
         self.run_sync()

@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import os
 import sqlite3
 
@@ -18,7 +18,8 @@ def conectar(path=None):
     CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT, drive_id TEXT NOT NULL UNIQUE,
       titulo TEXT NOT NULL, autor TEXT NOT NULL DEFAULT '',
-      tipo TEXT NOT NULL CHECK(tipo IN ('pdf','curso','video')),
+      tipo TEXT NOT NULL CHECK(tipo IN ('pdf','curso','video','audio','imagen','archivo')),
+      tipo_contenido TEXT NOT NULL DEFAULT '', formato TEXT NOT NULL DEFAULT '',
       categoria_macro TEXT DEFAULT 'General', subcategoria TEXT DEFAULT '',
       etiquetas TEXT DEFAULT '', descripcion TEXT DEFAULT '', notas TEXT DEFAULT '',
       estado_lectura TEXT DEFAULT 'pendiente' CHECK(estado_lectura IN ('pendiente','interesado','leyendo','leido','abandonado')),
@@ -26,10 +27,40 @@ def conectar(path=None):
       es_favorito INTEGER DEFAULT 0 CHECK(es_favorito IN (0,1)),
       ruta_relativa TEXT NOT NULL, ruta_portada TEXT, tamano_bytes INTEGER DEFAULT 0,
       mime_type TEXT, fecha_agregado TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ultimo_acceso TIMESTAMP,
-      titulo_personalizado INTEGER NOT NULL DEFAULT 0, perfil_drive TEXT NOT NULL DEFAULT '', disponible INTEGER NOT NULL DEFAULT 1
+      titulo_personalizado INTEGER NOT NULL DEFAULT 0, perfil_drive TEXT NOT NULL DEFAULT '', disponible INTEGER NOT NULL DEFAULT 1,
+      indexar_contenido INTEGER NOT NULL DEFAULT 0 CHECK(indexar_contenido IN (0,1)),
+      oculto INTEGER NOT NULL DEFAULT 0 CHECK(oculto IN (0,1))
     );
     CREATE INDEX IF NOT EXISTS idx_items_busqueda ON items(categoria_macro,subcategoria,estado_lectura,rating,es_favorito);
     CREATE INDEX IF NOT EXISTS idx_items_perfil ON items(perfil_drive,disponible);
+    CREATE TABLE IF NOT EXISTS container_entries (
+      id INTEGER PRIMARY KEY, container_drive_id TEXT NOT NULL, drive_id TEXT NOT NULL UNIQUE,
+      titulo TEXT NOT NULL, ruta_relativa TEXT NOT NULL, tamano_bytes INTEGER NOT NULL DEFAULT 0,
+      mime_type TEXT, perfil_drive TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_container_entries_parent ON container_entries(container_drive_id,perfil_drive);
+    CREATE TABLE IF NOT EXISTS pending_container_moves (
+      drive_id TEXT PRIMARY KEY, expected_relative TEXT NOT NULL,
+      container_drive_id TEXT NOT NULL, perfil_drive TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS container_entries_fts USING fts5(titulo,content='container_entries',content_rowid='id',tokenize='unicode61 remove_diacritics 2');
+    DROP TRIGGER IF EXISTS container_entries_ai;
+    DROP TRIGGER IF EXISTS container_entries_ad;
+    DROP TRIGGER IF EXISTS container_entries_au;
+    CREATE TRIGGER container_entries_ai AFTER INSERT ON container_entries
+      WHEN (SELECT indexar_contenido FROM items WHERE drive_id=new.container_drive_id)=1 BEGIN
+      INSERT INTO container_entries_fts(rowid,titulo) VALUES(new.id,new.titulo);
+    END;
+    CREATE TRIGGER container_entries_ad AFTER DELETE ON container_entries
+      WHEN (SELECT indexar_contenido FROM items WHERE drive_id=old.container_drive_id)=1 BEGIN
+      INSERT INTO container_entries_fts(container_entries_fts,rowid,titulo) VALUES('delete',old.id,old.titulo);
+    END;
+    CREATE TRIGGER container_entries_au AFTER UPDATE OF titulo ON container_entries
+      WHEN (SELECT indexar_contenido FROM items WHERE drive_id=old.container_drive_id)=1 BEGIN
+      INSERT INTO container_entries_fts(container_entries_fts,rowid,titulo) VALUES('delete',old.id,old.titulo);
+      INSERT INTO container_entries_fts(rowid,titulo) VALUES(new.id,new.titulo);
+    END;
     CREATE TABLE IF NOT EXISTS configuracion(clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
     CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(titulo,autor,etiquetas,notas,categoria_macro,subcategoria,content='items',content_rowid='id',tokenize='unicode61 remove_diacritics 2');
     CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
@@ -43,6 +74,37 @@ def conectar(path=None):
       INSERT INTO items_fts(rowid,titulo,autor,etiquetas,notas,categoria_macro,subcategoria) VALUES(new.id,new.titulo,new.autor,new.etiquetas,new.notas,new.categoria_macro,new.subcategoria);
     END;
     """)
+    columns={row[1] for row in db.execute('PRAGMA table_info(items)')}
+    if 'indexar_contenido' not in columns:
+        db.execute('ALTER TABLE items ADD COLUMN indexar_contenido INTEGER NOT NULL DEFAULT 0 CHECK(indexar_contenido IN (0,1))')
+    if 'oculto' not in columns:
+        db.execute('ALTER TABLE items ADD COLUMN oculto INTEGER NOT NULL DEFAULT 0 CHECK(oculto IN (0,1))')
+    if 'tipo_contenido' not in columns:
+        db.execute("ALTER TABLE items ADD COLUMN tipo_contenido TEXT NOT NULL DEFAULT ''")
+    if 'formato' not in columns:
+        db.execute("ALTER TABLE items ADD COLUMN formato TEXT NOT NULL DEFAULT ''")
+    missing=db.execute("SELECT id,tipo,ruta_relativa FROM items WHERE tipo_contenido='' OR (formato='' AND tipo!='curso')").fetchall()
+    if missing:
+        def content_type(row):
+            if row['tipo']=='curso': return 'contenedor'
+            if row['tipo']=='pdf': return 'documento'
+            path=PureWindowsPath(row['ruta_relativa'])
+            parts=path.parts
+            if row['tipo']=='archivo' and len(parts)==4 and parts[2].casefold()=='containers' and path.suffix.casefold() in ('.zip','.rar'):
+                return 'contenedor'
+            return 'otro' if row['tipo']=='archivo' else row['tipo']
+        db.executemany('UPDATE items SET tipo_contenido=?,formato=? WHERE id=?',[
+            (content_type(row),
+             '' if row['tipo']=='curso' else PureWindowsPath(row['ruta_relativa']).suffix.lstrip('.').upper(),row['id'])
+            for row in missing])
+        db.commit()
+    if {'folder_kind','group_id','group_manual'} & columns:
+        db.execute('''UPDATE items SET disponible=0 WHERE EXISTS (
+            SELECT 1 FROM items parent WHERE parent.tipo='curso' AND parent.perfil_drive=items.perfil_drive
+            AND items.ruta_relativa LIKE parent.ruta_relativa || char(92) || '%' AND parent.id!=items.id)''')
+        db.execute('DROP INDEX IF EXISTS idx_items_group')
+        for legacy in ('group_manual','group_id','folder_kind'):
+            if legacy in columns: db.execute('ALTER TABLE items DROP COLUMN '+legacy)
     return db
 
 def configurar(db, clave, valor):

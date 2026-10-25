@@ -34,6 +34,24 @@ def run(window):
         })()"""
         window.evaluate_js(script, callback=lambda value: done.set())
         assert done.wait(6)
+        if '--ux' in sys.argv:
+            done.clear()
+            ux_js="""(async()=>{
+              const $=id=>document.getElementById(id),S=window.balisco.state;
+              const wait=async f=>{const end=performance.now()+4000;while(!f()){if(performance.now()>end)throw Error('UX timeout');await new Promise(r=>setTimeout(r,20));}};
+              if($('dock').querySelectorAll('.divider').length!==3)throw Error('Dock sections');
+              if($('bulk')||$('overlays')||$('theme')||$('profiles')||$('backup'))throw Error('Old dock buttons');
+              $('sort').click();$('popover').querySelector('[data-sort="peso"]').click();await wait(()=>S.tokens.includes('@orden:peso'));
+              $('metadata').click();await wait(()=>S.view==='metadata');$('metadataView').querySelector('[data-meta-tab="author"]').click();
+              $('metadata').click();await wait(()=>S.view==='grid');
+              const cards=[...document.querySelectorAll('.card')];cards[0].click();await wait(()=>S.bulkIds.size===1);
+              cards[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));await wait(()=>S.bulkIds.size===2);
+              await wait(()=>$('containerProperty')&&$('bulkNotice').textContent.includes('2 elementos'));
+              $('deleteMode').click();await wait(()=>S.deleteMode==='hide');$('deleteMode').click();
+              return true;
+            })().catch(e=>({error:e.message}))"""
+            window.evaluate_js(ux_js, callback=lambda value: (result.__setitem__('ux',value),done.set()))
+            assert done.wait(8) and result['ux'] is True, result.get('ux')
         if '--facets' in sys.argv:
             done.clear()
             facet_js = """(async()=>{
@@ -43,8 +61,8 @@ def run(window):
               choose('rating','[data-rating="4"]');await wait(()=>S.tokens.includes('@rating:4'));
               choose('rating','[data-rating="4"]');await wait(()=>!S.tokens.some(t=>t.startsWith('@rating:')));
               choose('type','[data-type="pdf"]');await wait(()=>S.tokens.includes('@tipo:pdf'));
-              choose('type','[data-type="curso"]');await wait(()=>S.tokens.includes('@tipo:curso')&&!S.tokens.includes('@tipo:pdf'));
-              choose('type','[data-type="curso"]');await wait(()=>!S.tokens.some(t=>t.startsWith('@tipo:')));
+              choose('type','[data-type="contenedor"]');await wait(()=>S.tokens.includes('@tipo:contenedor')&&!S.tokens.includes('@tipo:pdf'));
+              choose('type','[data-type="contenedor"]');await wait(()=>!S.tokens.some(t=>t.startsWith('@tipo:')));
               choose('statusFilter','[data-reading="interesado"]');await wait(()=>S.tokens.includes('@interesado'));
               choose('statusFilter','[data-reading="interesado"]');await wait(()=>!S.tokens.includes('@interesado'));
               $('favorite').click();await wait(()=>S.tokens.includes('@favoritos'));
@@ -64,7 +82,7 @@ def run(window):
               spin('statusFilter',100);await wait(()=>$('statusFilter').querySelector('.state-indicator.leyendo'));
               spin('rating',-100);await wait(()=>$('rating').querySelector('.rating-fill').style.width==='80%');
               spin('rating',100);await wait(()=>$('rating').querySelector('.rating-fill').style.width==='60%');
-              spin('type',100);await wait(()=>$('type').getAttribute('aria-label')==='Tipo: Cursos');
+              spin('type',100);await wait(()=>$('type').getAttribute('aria-label')==='Tipo: Contenedores');
               spin('favorite',-100);await wait(()=>$('favorite').getAttribute('aria-pressed')==='true');
               spin('favorite',100);await wait(()=>$('favorite').getAttribute('aria-pressed')==='false');
               return ['rating','type','status','favorite'].every(x=>true);
@@ -122,6 +140,23 @@ def run(window):
                 assert time.monotonic()<deadline, 'Native maximize icon timeout'
                 time.sleep(.02)
         result['native_maximize_restore'] = True
+        # The custom title must start at the outer edge, without a native strip.
+        class Point(ctypes.Structure):
+            _fields_ = [('x', ctypes.c_long), ('y', ctypes.c_long)]
+        outer = ctypes.wintypes.RECT()
+        origin = Point(0, 0)
+        hwnd = api._chrome.resolve()
+        ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(outer))
+        ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(origin))
+        assert origin.y == outer.top, ('visible native top strip', origin.y, outer.top)
+        result['flush_top_edge'] = True
+        api._chrome.minimize()
+        deadline = time.monotonic()+4
+        while not ctypes.windll.user32.IsIconic(hwnd):
+            assert time.monotonic()<deadline, 'Minimize timeout'
+            time.sleep(.02)
+        window.restore()
+        result['native_minimize_restore'] = True
         result['close_started'] = time.monotonic()
         # Exercise native close (Alt+F4 path) while an edit is still pending.
         window.evaluate_js("document.getElementById('notes').value='last edit';document.getElementById('notes').dispatchEvent(new Event('input'))")
@@ -140,6 +175,7 @@ with tempfile.TemporaryDirectory(prefix='balisco-chrome-') as tmp:
     with closing(conectar(path)) as db, db:
         configurar(db, 'id_perfil_drive', 'fixture')
         db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES('fixture_book_01','Test','pdf','Test.pdf','fixture')")
+        db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES('fixture_book_02','Segundo','pdf','Segundo.pdf','fixture')")
     api = DesktopAPI(tmp)
     window = webview.create_window('Balisco chrome test', str(ROOT/'ui/index.html'), js_api=api,
                                    width=1000, height=700, min_size=(940,640), frameless=True, easy_drag=False)

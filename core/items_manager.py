@@ -76,5 +76,7 @@ class ItemsManager:
         item=self.obtener(drive_id); path=self.ruta_local(item)
         if not path.exists(): path=Path(self.auto_reparar_ruta(drive_id))
         send2trash(str(path))
-        with self.db: self.db.execute('DELETE FROM items WHERE drive_id=?',(drive_id,))
+        with self.db:
+            self.db.execute('DELETE FROM container_entries WHERE container_drive_id=?',(drive_id,))
+            self.db.execute('DELETE FROM items WHERE drive_id=?',(drive_id,))
         return True

@@ -1,20 +1,20 @@
 # Balisco — Biblioteca y Archivo de Conocimiento Personal
 
-Balisco es una aplicación de escritorio de alto rendimiento diseñada para indexar, explorar y gestionar colecciones masivas de libros, cursos y documentos alojados en Google Drive, con cero descargas obligatorias de binarios pesados y una interfaz moderna acelerada por GPU a 144 FPS.
+Balisco es una aplicación de escritorio de alto rendimiento diseñada para indexar, explorar y gestionar libros, contenedores y documentos alojados en Google Drive, con cero descargas obligatorias de binarios pesados y una interfaz moderna acelerada por GPU a 144 FPS.
 
 ---
 
 ## Características Principales
 
 * **Indexación Instantánea sin descargas (0 MB):** Lee metadatos directamente de la base local de Google DriveFS (`metadata_sqlite_db`) con identificadores inmutables `drive_id`.
-* **Detección Quirúrgica de Cursos:** Trata carpetas de cursos completas como entidades indivisibles con vista interna de recursos, evitando saturar el catálogo general con fragmentos de video.
+* **Contenedores:** Cada carpeta inmediata de `Biblioteca/Containers/` ocupa una sola tarjeta. Sus archivos se muestran como recursos al abrirla. La búsqueda profunda está apagada por defecto; al activarla, sus títulos internos se buscan globalmente a través de la tarjeta del contenedor.
 * **Limpieza Estética Automática:** Elimina extensiones (`.pdf`, `.epub`), hashes MD5, identificadores web (`Anna's Archive`, `libgen`, `z-lib`) y extrae automáticamente los autores a los metadatos.
-* **Búsqueda FTS5 en Tiempo Real:** Búsqueda instantánea con filtros acumulativos (`+etiqueta`, `-excluir`, `@estado`, `@tipo:pdf/curso/video`, `@rating:1-5`).
+* **Búsqueda FTS5 en Tiempo Real:** Búsqueda instantánea con filtros acumulativos (`+etiqueta`, `-excluir`, `@estado`, `@tipo:pdf/contenedor/video`, `@rating:1-5`).
 * **Serendipia Táctil (Dado / Diana):**
   * **Rueda del ratón / Clic derecho:** Alterna fluidamente entre modo *Aleatorio puro* 🎲 y modo *Intereses recientes* 🎯.
   * **Clic izquierdo:** Lanza la tirada y localiza de inmediato una pieza de conocimiento.
 * **Ajuste de Cuadrícula con Rueda:** Gira la rueda del ratón sobre el botón de cuadrícula para ajustar el tamaño de las tarjetas en tiempo real.
-* **Inspector Lateral Completo:** Portadas de alta definición (con soporte de arrastrar y soltar), edición de notas Markdown con persistencia continua, calificación por estrellas, etiquetas y enlace directo a Google Drive.
+* **Inspector Lateral Completo:** Portadas de alta definición (con soporte de arrastrar y soltar), edición de notas Markdown con persistencia continua, calificación por estrellas, etiquetas y enlace directo a Google Drive. La edición masiva permite cambiar autores y etiquetas de varios libros.
 * **Persistencia de Geometría:** Recuerda posición, dimensiones y estado maximizado de la ventana entre sesiones.
 
 ---
@@ -70,7 +70,7 @@ Balisco/
 ├── pyproject.toml       # Dependencias y configuración de empaquetado
 ├── core/                # Módulos del núcleo Python
 │   ├── database.py      # Esquema SQLite, WAL, índices y triggers FTS5
-│   ├── drive_sync.py    # Lógica de sincronización DriveFS y cursos
+│   ├── drive_sync.py    # Lógica de sincronización DriveFS y contenedores
 │   ├── cleaner.py       # Limpieza estética de títulos y extracción de autores
 │   ├── search_parser.py # Motor de filtros y consulta FTS5
 │   ├── desktop_api.py   # Puente de llamadas JS <-> Python
