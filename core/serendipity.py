@@ -46,11 +46,11 @@ def _text_similarity(left,right,idf):
     return dot/(norm_a*norm_b) if norm_a and norm_b else 0.0
 
 def obtener_aleatorio_puro(conexion_db, perfil=None):
-    row=conexion_db.execute('SELECT * FROM items WHERE disponible=1 AND oculto=0'+(' AND perfil_drive=?' if perfil is not None else '')+' ORDER BY RANDOM() LIMIT 1',([] if perfil is None else [perfil])).fetchone()
+    row=conexion_db.execute("SELECT * FROM items WHERE disponible=1 AND oculto=0 AND container_parent=''"+(' AND perfil_drive=?' if perfil is not None else '')+' ORDER BY RANDOM() LIMIT 1',([] if perfil is None else [perfil])).fetchone()
     return dict(row) if row else None
 
 def obtener_semi_aleatorio_contextual(conexion_db, limite_historial=8, perfil=None):
-    scope='disponible=1 AND oculto=0'+(' AND perfil_drive=?' if perfil is not None else '')
+    scope="disponible=1 AND oculto=0 AND container_parent=''"+(' AND perfil_drive=?' if perfil is not None else '')
     args=[] if perfil is None else [perfil]
     rows=[dict(r) for r in conexion_db.execute('SELECT * FROM items WHERE '+scope,args)]
     if len(rows)<2:return obtener_aleatorio_puro(conexion_db,perfil)

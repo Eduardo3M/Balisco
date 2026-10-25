@@ -29,7 +29,11 @@ def conectar(path=None):
       mime_type TEXT, fecha_agregado TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ultimo_acceso TIMESTAMP,
       titulo_personalizado INTEGER NOT NULL DEFAULT 0, perfil_drive TEXT NOT NULL DEFAULT '', disponible INTEGER NOT NULL DEFAULT 1,
       indexar_contenido INTEGER NOT NULL DEFAULT 0 CHECK(indexar_contenido IN (0,1)),
-      oculto INTEGER NOT NULL DEFAULT 0 CHECK(oculto IN (0,1))
+      oculto INTEGER NOT NULL DEFAULT 0 CHECK(oculto IN (0,1)),
+      container_parent TEXT NOT NULL DEFAULT '',
+      fijado INTEGER NOT NULL DEFAULT 0 CHECK(fijado IN (0,1)),
+      search_override INTEGER NOT NULL DEFAULT -1 CHECK(search_override IN (-1,0,1)),
+      recent_hidden INTEGER NOT NULL DEFAULT 0 CHECK(recent_hidden IN (0,1))
     );
     CREATE INDEX IF NOT EXISTS idx_items_busqueda ON items(categoria_macro,subcategoria,estado_lectura,rating,es_favorito);
     CREATE INDEX IF NOT EXISTS idx_items_perfil ON items(perfil_drive,disponible);
@@ -83,6 +87,12 @@ def conectar(path=None):
         db.execute("ALTER TABLE items ADD COLUMN tipo_contenido TEXT NOT NULL DEFAULT ''")
     if 'formato' not in columns:
         db.execute("ALTER TABLE items ADD COLUMN formato TEXT NOT NULL DEFAULT ''")
+    for column,definition in (
+        ('container_parent',"TEXT NOT NULL DEFAULT ''"),
+        ('fijado','INTEGER NOT NULL DEFAULT 0'),
+        ('search_override','INTEGER NOT NULL DEFAULT -1'),
+        ('recent_hidden','INTEGER NOT NULL DEFAULT 0')):
+        if column not in columns: db.execute('ALTER TABLE items ADD COLUMN '+column+' '+definition)
     missing=db.execute("SELECT id,tipo,ruta_relativa FROM items WHERE tipo_contenido='' OR (formato='' AND tipo!='curso')").fetchall()
     if missing:
         def content_type(row):

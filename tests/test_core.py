@@ -38,7 +38,7 @@ class CoreTests(unittest.TestCase):
     def tearDown(self): self.db.close(); self.temp.cleanup()
     def run_sync(self): return self.sync.sincronizar_biblioteca(ruta_db=self.source,perfil='fixture')
     def test_exclusions_and_course_boundary(self):
-        self.assertEqual([r[0] for r in self.db.execute('SELECT titulo FROM items ORDER BY titulo')],['Curso Blender','Roma'])
+        self.assertEqual([r[0] for r in self.db.execute('SELECT titulo FROM items ORDER BY titulo')],['Curso Blender','Roma','capitulo'])
         self.assertEqual([r['titulo'] for r in buscar(self.db,limpiar_todos_filtros())],['Curso Blender','Roma'])
         self.assertEqual(self.db.execute("SELECT categoria_macro FROM items WHERE tipo='pdf'").fetchone()[0],'Historia')
     def test_document_type_and_epub_format_are_independent(self):
@@ -136,13 +136,13 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(buscar(self.db,filters),[])
         api=DesktopAPI(self.root)
         self.assertTrue(api.call('set_deep_search',{'id':'drive_id_007','enabled':True})['ok'])
-        self.assertEqual([r['drive_id'] for r in buscar(self.db,filters)],['drive_id_007'])
-        self.assertEqual(self.db.execute("SELECT count(*) FROM items WHERE drive_id='drive_id_013'").fetchone()[0],0)
+        self.assertEqual([r['drive_id'] for r in buscar(self.db,filters)],['drive_id_013'])
+        self.assertEqual(self.db.execute("SELECT count(*) FROM items WHERE drive_id='drive_id_013'").fetchone()[0],1)
         c=sqlite3.connect(self.source)
         c.execute("UPDATE items SET local_title='Ritos iguales.pdf' WHERE stable_id=13")
         c.commit(); c.close(); self.run_sync()
         self.assertEqual(buscar(self.db,filters),[])
-        self.assertEqual([r['drive_id'] for r in buscar(self.db,agregar_filtro('Ritos',limpiar_todos_filtros()))],['drive_id_007'])
+        self.assertEqual([r['drive_id'] for r in buscar(self.db,agregar_filtro('Ritos',limpiar_todos_filtros()))],['drive_id_013'])
         self.assertTrue(api.call('set_deep_search',{'id':'drive_id_007','enabled':False})['ok'])
         self.assertEqual(buscar(self.db,agregar_filtro('Ritos',limpiar_todos_filtros())),[])
     def test_pending_move_survives_stale_drive_metadata(self):
@@ -176,6 +176,6 @@ class CoreTests(unittest.TestCase):
             extracted=self.root/'restored'; z.extractall(extracted)
         c=sqlite3.connect(extracted/'biblioteca.db')
         self.assertEqual(c.execute('PRAGMA integrity_check').fetchone()[0],'ok')
-        self.assertEqual(c.execute('SELECT COUNT(*) FROM items').fetchone()[0],2); c.close()
+        self.assertEqual(c.execute('SELECT COUNT(*) FROM items').fetchone()[0],3); c.close()
 
 if __name__=='__main__': unittest.main()

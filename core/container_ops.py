@@ -238,7 +238,8 @@ def assign_items(db, profile, ids, container_id=None, name=None):
                 ruta_relativa=excluded.ruta_relativa,tamano_bytes=excluded.tamano_bytes,
                 mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive''',
                 (container_id,item['drive_id'],target.name,relative,item['tamano_bytes'],item['mime_type'],profile))
-            db.execute('UPDATE items SET disponible=0 WHERE id=?',(item['id'],))
+            db.execute('UPDATE items SET disponible=1,container_parent=?,ruta_relativa=? WHERE id=?',
+                       (container_id,relative,item['id']))
             db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
                 VALUES(?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
                 expected_relative=excluded.expected_relative,container_drive_id=excluded.container_drive_id,
@@ -289,7 +290,7 @@ def ungroup_container(db, profile, container_id):
             db.execute('''INSERT INTO items(drive_id,titulo,autor,tipo,tipo_contenido,formato,ruta_relativa,perfil_drive,tamano_bytes,mime_type)
                 VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
                 ruta_relativa=excluded.ruta_relativa,tipo=excluded.tipo,tipo_contenido=excluded.tipo_contenido,
-                formato=excluded.formato,disponible=1''',
+                formato=excluded.formato,disponible=1,container_parent='' ''',
                 (entry['drive_id'],title,author,tipo,'documento' if tipo=='pdf' else 'otro' if tipo=='archivo' else tipo,
                  ext.lstrip('.').upper(),relative,profile,entry['tamano_bytes'],entry['mime_type']))
             db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)

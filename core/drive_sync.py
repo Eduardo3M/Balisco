@@ -149,7 +149,7 @@ class DriveSync:
         check_cancelled()
         roots=meta.roots(ruta_raiz)
         if len(roots)!=1: raise SeleccionRequerida('Biblioteca raíz ausente o ambigua; no se modifica el catálogo')
-        root=roots[0]; rows=[]; entries=[]; skipped=0; visited=set();container_roots={}
+        root=roots[0]; rows=[]; entries=[]; skipped=0; visited=set();container_roots={};internal_ids={}
 
         subtree_bytes={}; computing=set()
         def compute_size(ident):
@@ -180,6 +180,10 @@ class DriveSync:
 
             if node['is_folder']:
                 in_containers=len(parts)==4 and parts[2].casefold()=='containers'
+                if container_id is not None:
+                    internal_ids[drive_id]=container_id
+                    rows.append((drive_id,node['local_title'],'','curso','Containers','',str(PureWindowsPath(*parts)),
+                                 'portadas/'+drive_id+'.jpg',subtree_bytes.get(ident,0),node['mime_type'],perfil,'contenedor',''))
                 if container_id is None and in_containers:
                     categories=parts[2:-1]
                     cat_macro=categories[0] if categories else 'General'
@@ -208,11 +212,18 @@ class DriveSync:
                 return
 
             if container_id:
+                internal_ids[drive_id]=container_id
                 root_parts=container_roots.get(container_id,())
                 relative_parts=parts[len(root_parts):] if parts[:len(root_parts)]==root_parts else (node['local_title'],)
                 entries.append((container_id,drive_id,'/'.join(relative_parts),
                                 str(PureWindowsPath(*parts)),node['file_size'] or 0,
                                 node['mime_type'],perfil))
+                ext=Path(node['local_title']).suffix.lower()
+                tipo=classify_file(node['local_title'],allow_other=True) or 'archivo'
+                title,author=clean_book_title_and_author(node['local_title'],tipo) if tipo=='pdf' else (Path(node['local_title']).stem,'')
+                rows.append((drive_id,title,author,tipo,'Containers','',str(PureWindowsPath(*parts)),
+                             'portadas/'+drive_id+'.jpg',node['file_size'] or 0,node['mime_type'],perfil,
+                             'documento' if tipo=='pdf' else 'otro' if tipo=='archivo' else tipo,ext.lstrip('.').upper()))
                 return
 
             ext=Path(node['local_title']).suffix.lower()
@@ -276,6 +287,11 @@ class DriveSync:
               ruta_relativa=excluded.ruta_relativa,ruta_portada=excluded.ruta_portada,tamano_bytes=excluded.tamano_bytes,
               mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive,
               disponible=1""",rows)
+            self.db.executemany('UPDATE items SET container_parent=? WHERE drive_id=? AND perfil_drive=?',
+                                [(parent,ident,perfil) for ident,parent in internal_ids.items()])
+            self.db.executemany("UPDATE items SET container_parent='' WHERE drive_id=? AND perfil_drive=?",
+                                [(row[0],perfil) for row in rows if row[0] not in internal_ids and
+                                 row[0] not in {move['drive_id'] for move in pending if move['drive_id'] not in resolved}])
             check_cancelled()
             if not skipped: self.db.execute('DELETE FROM container_entries WHERE perfil_drive=?',(perfil,))
             self.db.executemany('''INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive)

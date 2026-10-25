@@ -1,5 +1,6 @@
 """Filtros acumulativos y parametrizados; texto sin operadores FTS inyectables."""
 from copy import deepcopy
+from pathlib import PureWindowsPath
 import re
 from uuid import uuid4
 from .database import STATES
@@ -38,6 +39,8 @@ def agregar_filtro(token, estado_actual_filtros):
             raise ValueError('Orden desconocido')
     elif token.casefold() in ('@ocultos','@hidden'):
         kind,value='ocultos',1
+    elif token.casefold()=='@recientes':
+        kind,value='historial',1
     elif token=='@favoritos':
         kind,value='favoritos',1
     elif token.startswith('@'):
@@ -60,6 +63,9 @@ def construir_query_sql(filtros_activos, perfil=None):
     clauses=['i.disponible=1','i.oculto='+('1' if hidden else '0')]; params=[]
     if perfil is not None:
         clauses.append('i.perfil_drive=?'); params.append(perfil)
+    has_text=any(p['tipo']=='texto_titulo' for p in filtros_activos['pildoras'])
+    history=any(p['tipo']=='historial' for p in filtros_activos['pildoras'])
+    clauses.append("(i.container_parent='' OR i.fijado=1"+(" OR i.container_parent!=''" if has_text or history else '')+")")
     tipos=[p['valor'] for p in filtros_activos['pildoras'] if p['tipo']=='tipo']
     if tipos:
         choices=[]
@@ -75,13 +81,13 @@ def construir_query_sql(filtros_activos, perfil=None):
         kind,value=p['tipo'],p['valor']
         if kind in ('tipo','orden','ocultos'):
             continue
+        if kind=='historial':
+            clauses.append('i.ultimo_acceso IS NOT NULL AND i.recent_hidden=0')
+            continue
         if kind=='texto_titulo':
             query=fts_query(value)
-            clauses.append('''(i.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)
-                OR (i.tipo='curso' AND i.indexar_contenido=1 AND i.drive_id IN
-                    (SELECT e.container_drive_id FROM container_entries e JOIN container_entries_fts f ON f.rowid=e.id
-                     WHERE container_entries_fts MATCH ?)))''')
-            params.extend(('{titulo autor notas} : ('+query+')',query))
+            clauses.append('i.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)')
+            params.append('{titulo autor notas} : ('+query+')')
         elif kind in ('tags_incluir','tags_excluir'):
             clauses.append("instr(' ' || i.etiquetas || ' ', ?) "+('> 0' if kind=='tags_incluir' else '= 0'))
             params.append(' +'+value+' ')
@@ -94,18 +100,40 @@ def construir_query_sql(filtros_activos, perfil=None):
         else: raise ValueError('Filtro desconocido')
     sort=next((p['valor'] for p in reversed(filtros_activos['pildoras']) if p['tipo']=='orden'),'recientes')
     order={
-        'recientes':"MAX(COALESCE(i.ultimo_acceso,''),COALESCE(i.fecha_agregado,'')) DESC, i.id DESC",
-        'antiguos':'i.fecha_agregado ASC, i.id ASC',
-        'abiertos':'i.ultimo_acceso IS NULL, i.ultimo_acceso DESC, i.id DESC',
-        'peso':'i.tamano_bytes DESC, i.id DESC',
-        'ligero':'i.tamano_bytes ASC, i.id ASC',
-        'alfabetico':'i.titulo COLLATE NOCASE ASC, i.id ASC',
+        'recientes':"i.fijado DESC, MAX(COALESCE(i.ultimo_acceso,''),COALESCE(i.fecha_agregado,'')) DESC, i.id DESC",
+        'antiguos':'i.fijado DESC, i.fecha_agregado ASC, i.id ASC',
+        'abiertos':'i.fijado DESC, i.ultimo_acceso IS NULL, i.ultimo_acceso DESC, i.id DESC',
+        'peso':'i.fijado DESC, i.tamano_bytes DESC, i.id DESC',
+        'ligero':'i.fijado DESC, i.tamano_bytes ASC, i.id ASC',
+        'alfabetico':'i.fijado DESC, i.titulo COLLATE NOCASE ASC, i.id ASC',
     }[sort]
     return 'SELECT i.* FROM items i WHERE '+' AND '.join(clauses)+' ORDER BY '+order,params
 
 def buscar(db, filtros, perfil=None, limite=200, offset=0):
     sql,params=construir_query_sql(filtros,perfil)
-    return [dict(r) for r in db.execute(sql+' LIMIT ? OFFSET ?',params+[max(1,min(int(limite),1000)),max(0,int(offset))])]
+    rows=[dict(r) for r in db.execute(sql,params)]
+    if any(p['tipo']=='texto_titulo' for p in filtros['pildoras']):
+        cache={}
+        rows=[row for row in rows if internal_searchable(db,row,cache)]
+    return rows[max(0,int(offset)):max(0,int(offset))+max(1,min(int(limite),1000))]
+
+def internal_searchable(db,item,cache=None):
+    if not item['container_parent'] or item['fijado']:return True
+    cache={} if cache is None else cache
+    root=item['container_parent']
+    if root not in cache:
+        parent=db.execute('SELECT indexar_contenido FROM items WHERE drive_id=?',(root,)).fetchone()
+        folders=[dict(row) for row in db.execute("SELECT ruta_relativa,search_override FROM items WHERE container_parent=? AND tipo='curso' AND disponible=1",(root,))]
+        cache[root]=(parent,folders)
+    parent,folders=cache[root]
+    if not parent:return False
+    enabled=bool(parent['indexar_contenido']);path=tuple(part.casefold() for part in PureWindowsPath(item['ruta_relativa']).parts)
+    for folder in sorted(folders,key=lambda f:len(PureWindowsPath(f['ruta_relativa']).parts)):
+        parts=tuple(part.casefold() for part in PureWindowsPath(folder['ruta_relativa']).parts)
+        if len(parts)<len(path) and path[:len(parts)]==parts and folder['search_override']!=-1:
+            enabled=bool(folder['search_override'])
+    if item['search_override']!=-1:enabled=bool(item['search_override'])
+    return enabled
 
 def buscar_global(db, texto):
     filters=agregar_filtro(texto,limpiar_todos_filtros())

@@ -54,33 +54,31 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(self.call('query',tokens=['autor:María Sol'])['items'])
         self.assertFalse(self.api.call('bulk_metadata',{'ids':[ids[0],'test_drive_002'],'field':'etiquetas','operation':'add','value':'seguro'})['ok'])
         self.assertNotIn('+seguro',self.call('detail',id=ids[0])['etiquetas'])
-    def test_deep_search_returns_one_container_card_with_match(self):
+    def test_internal_search_inheritance_pin_and_recent(self):
+        root=r'Mi unidad\Biblioteca\Containers\Mundodisco'
         with closing(self.api._connect()) as db:
             with db:
-                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
-                           ('test_container','Mundodisco','curso',r'Mi unidad\Biblioteca\Containers\Mundodisco','test'))
-                db.execute("INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,perfil_drive) VALUES(?,?,?,?,?)",
-                           ('test_container','test_mort','Materials/Unit 3/Mort.pdf','internal','test'))
-        self.assertEqual(self.call('query',tokens=['Unit'])['items'],[])
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,indexar_contenido) VALUES(?,?,?,?,?,1)",
+                           ('test_container','Mundodisco','curso',root,'test'))
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,container_parent) VALUES(?,?,?,?,?,?)",
+                           ('test_folder','Unit 3','curso',root+r'\Unit 3','test','test_container'))
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,container_parent) VALUES(?,?,?,?,?,?)",
+                           ('test_mort','Mort','pdf',root+r'\Unit 3\Mort.pdf','test','test_container'))
+        self.assertEqual([r['drive_id'] for r in self.call('query')['items']],['test_container','test_drive_001'])
+        self.assertEqual([r['drive_id'] for r in self.call('query',tokens=['Mort'])['items']],['test_mort'])
+        self.call('set_search_override',ids=['test_folder'],value=0)
+        self.assertFalse(self.call('query',tokens=['Mort'])['items'])
+        self.call('set_search_override',ids=['test_mort'],value=1)
+        self.assertEqual([r['drive_id'] for r in self.call('query',tokens=['Mort'])['items']],['test_mort'])
+        self.call('bulk_update',ids=['test_folder','test_mort'],field='es_favorito',value=True)
+        self.assertTrue(self.call('detail',id='test_folder')['es_favorito'])
+        self.call('bulk_update',ids=['test_mort'],field='fijado',value=True)
+        self.assertEqual(self.call('query')['items'][0]['drive_id'],'test_mort')
         with closing(self.api._connect()) as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM container_entries_fts WHERE container_entries_fts MATCH 'Mort'").fetchone()[0],0)
-        original=self.api._dispatch
-        def dispatch(db,action,payload):
-            if action=='container':
-                rows={'test_mort':{'id':'test_mort','title':'Materials/Unit 3/Mort.pdf','path':r'Mi unidad\Biblioteca\Containers\Mundodisco\Materials\Unit 3\Mort.pdf','size':10,'mime':'application/pdf'}}
-                self.api._containers[payload['id']]=rows
-                return list(rows.values())
-            return original(db,action,payload)
-        with patch.object(self.api,'_dispatch',side_effect=dispatch):
-            self.call('set_deep_search',id='test_container',enabled=True)
-        rows=self.call('query',tokens=['Unit'])['items']
-        self.assertEqual([row['drive_id'] for row in rows],['test_container'])
-        self.assertEqual(rows[0]['coincidencia_interna'],['Materials/Unit 3/Mort.pdf'])
-        with patch.object(self.api,'_dispatch',side_effect=dispatch):
-            self.call('set_deep_search',id='test_container',enabled=False)
-        self.assertEqual(self.call('query',tokens=['Unit'])['items'],[])
-        with closing(self.api._connect()) as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM container_entries_fts WHERE container_entries_fts MATCH 'Mort'").fetchone()[0],0)
+            with db: db.execute('UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP WHERE drive_id=?',('test_mort',))
+        self.assertEqual([r['drive_id'] for r in self.call('query',tokens=['@recientes'])['items']],['test_mort'])
+        self.call('remove_recent',id='test_mort')
+        self.assertFalse(self.call('query',tokens=['@recientes'])['items'])
     def test_hidden_sort_and_taxonomy_edit(self):
         with closing(self.api._connect()) as db:
             db.execute("UPDATE items SET tamano_bytes=200,fecha_agregado='2020-01-01' WHERE drive_id='test_drive_001'")
@@ -193,12 +191,12 @@ class DesktopTests(unittest.TestCase):
             with db:
                 configurar(db,'unidad_drive:test',str(self.root))
                 db.execute("UPDATE items SET ruta_relativa=? WHERE drive_id='test_drive_001'",(r'Mi unidad\Biblioteca\book.pdf',))
-        with patch('core.container_ops.drive_id_for_path',side_effect=['test_container_new','test_imported']):
+        with patch('core.container_ops.drive_id_for_path',return_value='test_container_new'):
             created=self.call('assign_container',ids=['test_drive_001'],name='Nuevo')
             self.assertEqual(created['container_id'],'test_container_new')
             self.assertTrue((library/'Containers'/'Nuevo'/'book.pdf').is_file())
             imported=self.call('import_container',path=str(external))
-            self.assertEqual(imported['container_id'],'test_imported')
+            self.assertEqual(imported['title'],'Guías')
             self.assertTrue((library/'Containers'/'Guías'/'uno.pdf').is_file())
     def test_retry_container_creation_after_drive_metadata_delay(self):
         library=self.root/'Mi unidad'/'Biblioteca'; library.mkdir(parents=True)
@@ -271,7 +269,9 @@ class DesktopTests(unittest.TestCase):
         profiles=[{'id':'test','ruta_db':str(source),'tiene_biblioteca':True}]
         with patch('core.desktop_api.detectar_perfiles_drive',return_value=profiles):
             resources=self.call('container',id='course_id_3')
-            self.assertEqual(len(resources),1);self.assertEqual(resources[0]['title'],'Tema / leccion.mp4')
+            self.assertEqual({row['title'] for row in resources},{'Tema','Tema/leccion.mp4'})
+            self.assertTrue(self.call('detail',id='course_id_4')['disponible'])
+            self.assertTrue(self.call('detail',id='course_id_5')['disponible'])
             with patch('core.desktop_api.os.startfile',create=True) as launch:
                 self.call('container_open',container='course_id_3',id='course_id_5',mode='local')
                 self.assertIn('leccion.mp4',launch.call_args.args[0])
