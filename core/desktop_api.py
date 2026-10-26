@@ -14,8 +14,8 @@ import uuid
 import webbrowser
 from .database import DATA_DIR, conectar, configurar, preferencia
 from .items_manager import ItemsManager
-from .tags_manager import TagsManager, obtener_etiquetas_ordenadas_frecuencia
-from .search_parser import agregar_filtro, limpiar_todos_filtros, construir_query_sql, fts_query, internal_searchable
+from .tags_manager import TagsManager, obtener_etiquetas_ordenadas_frecuencia, obtener_sugerencias_etiquetas
+from .search_parser import agregar_filtro, limpiar_todos_filtros, construir_query_sql, internal_searchable
 from .serendipity import obtener_aleatorio_puro, obtener_semi_aleatorio_contextual, obtener_similares
 from .drive_sync import (DriveSync, Metadata, conectar_db_drive_ro, detectar_perfiles_drive,
                          extraer_ids_proto, ID_PATTERN, obtener_letra_drive, cambiar_perfil_activo, classify_file)
@@ -32,9 +32,14 @@ class DesktopAPI:
         self._lock=threading.RLock()
         self._sync_lock=threading.RLock()
         self._containers={}
+        self._container_cache_info={}
+        self._profile_sources=None
         self._imports={}
         self._imports_lock=threading.RLock()
+        self._undo_deletions=[]
         self._started=started or time.perf_counter()
+        self._cover_ids_cache=None
+        self._auto_thumbs_cache=None
         from .migrations import migrate_author
         migrate_author(self._dbpath)
         from .migrations import migrate_interested
@@ -46,6 +51,30 @@ class DesktopAPI:
         with closing(conectar(self._dbpath)) as db:
             if 'autor' not in {r[1] for r in db.execute('PRAGMA table_info(items)')}:
                 raise RuntimeError('La base requiere la migración de autor de Fase 1 antes de iniciar.')
+    def _ensure_cover_cache(self):
+        if self._cover_ids_cache is None:
+            covers_dir=self._dir/'portadas'
+            self._cover_ids_cache={f.stem for f in covers_dir.glob('*.jpg') if not f.is_symlink() and f.stat().st_size<=8_000_000} if covers_dir.is_dir() else set()
+            auto_dir=self._dir/'portadas_auto'
+            self._auto_thumbs_cache={f.name for f in auto_dir.glob('*.jpg') if not f.is_symlink() and f.stat().st_size<=8_000_000} if auto_dir.is_dir() else set()
+
+    def _invalidate_cover_cache(self):
+        self._cover_ids_cache=None
+        self._auto_thumbs_cache=None
+
+    def _item_has_cover(self, item, profile=None):
+        if item.get('folder'): return False
+        self._ensure_cover_cache()
+        ident=item.get('drive_id') or item.get('id')
+        if ident and ident in self._cover_ids_cache: return True
+        prof=profile or item.get('perfil_drive') or ''
+        rel=item.get('ruta_relativa') or item.get('path') or ''
+        if prof and rel:
+            from .thumbnailer import thumbnail_name
+            t_name=thumbnail_name(prof, rel)
+            if t_name in self._auto_thumbs_cache: return True
+        return False
+
     def _connect(self):
         db=sqlite3.connect(self._dbpath,timeout=10)
         db.create_function('unicode_casefold',1,lambda value: str(value or '').casefold(),deterministic=True)
@@ -165,6 +194,7 @@ class DesktopAPI:
                             expected_relative='',container_drive_id='__removed__',created_at=CURRENT_TIMESTAMP''',(drive_id,profile))
                         db.execute('DELETE FROM items WHERE drive_id=?',(drive_id,))
                     db.execute('DELETE FROM items WHERE ruta_relativa=? AND perfil_drive=?',(relative,profile))
+        with self._lock:self._containers.clear();self._container_cache_info.clear()
         return 'La copia de esta operación se eliminó de la unidad local de Drive; DriveFS propagará el borrado a Google Drive.'
     def _set_import_phase(self,ident,phase,detail=None):
         messages={'copiando':'Copiando a la unidad de Drive · aprox. 10–70%…','copia_completa':'Copia local completa · aprox. 75%; esperando a DriveFS…','esperando_drive':'Copia terminada · aprox. 80%; esperando registro de DriveFS…','registrando':'DriveFS reconoció el elemento · aprox. 85%; registrándolo…','sincronizando':'Sincronizando la biblioteca · aprox. 90%…','verificando':'Verificando que aparezca en Balisco · aprox. 95%…'}
@@ -190,6 +220,7 @@ class DesktopAPI:
                 else:
                     data=import_library_file(db,profile,str(source),progress=progress,cancelled=cancelled,on_target=on_target,
                                              thumbnail_dir=self._dir/'portadas_auto')
+            with self._lock:self._containers.clear();self._container_cache_info.clear()
             with self._imports_lock:
                 cancelled_at_finish=self._imports[ident].get('cancel_requested')
                 if not cancelled_at_finish:
@@ -223,13 +254,53 @@ class DesktopAPI:
         if item['perfil_drive']!=preferencia(db,'id_perfil_drive','') or not item['disponible']:
             raise ValueError('Elemento fuera del perfil activo')
         return item
+    def _capture_deletion(self,db,path,ids,container_id=None):
+        ids=set(ids)
+        marks=','.join('?' for _ in ids)
+        items=[dict(row) for row in db.execute(f'SELECT * FROM items WHERE drive_id IN ({marks})',tuple(ids))] if ids else []
+        entries=[dict(row) for row in db.execute(f'SELECT * FROM container_entries WHERE drive_id IN ({marks})'+
+                 (' OR container_drive_id=?' if container_id else ''),(*ids,*([container_id] if container_id else [])))] if ids or container_id else []
+        moves=[dict(row) for row in db.execute(f'SELECT * FROM pending_container_moves WHERE drive_id IN ({marks})',tuple(ids))] if ids else []
+        return {'path':str(path),'ids':ids,'items':items,'entries':entries,'moves':moves}
+    def _remember_deletion(self,snapshot):
+        self._undo_deletions.append(snapshot)
+    def _undo_deletion(self,db):
+        if not self._undo_deletions: return {'restored':False}
+        from .recycle_undo import restore_from_recycle_bin
+        snapshot=self._undo_deletions[-1]
+        restore_from_recycle_bin(snapshot['path'])
+        with db:
+            for row in snapshot['items']:
+                columns=list(row)
+                db.execute(f"INSERT OR REPLACE INTO items ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",tuple(row.values()))
+            for row in snapshot['entries']:
+                columns=list(row)
+                db.execute(f"INSERT OR REPLACE INTO container_entries ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",tuple(row.values()))
+            for ident in snapshot['ids']:
+                db.execute('DELETE FROM pending_container_moves WHERE drive_id=?',(ident,))
+            for row in snapshot['moves']:
+                columns=list(row)
+                db.execute(f"INSERT INTO pending_container_moves ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",tuple(row.values()))
+        self._undo_deletions.pop()
+        self._containers.clear(); self._container_cache_info.clear()
+        return {'restored':True,'name':Path(snapshot['path']).name}
     def _internal_searchable(self,db,item,cache):
         return internal_searchable(db,item,cache)
+    def _container_payload(self,db,container_id,profile):
+        records=list(self._containers[container_id].values())
+        metadata={row['drive_id']:dict(row) for row in db.execute('''SELECT drive_id,titulo,autor,etiquetas,rating,
+            es_favorito,estado_lectura,tipo_contenido,formato,fijado,search_override,ultimo_acceso,recent_hidden
+            FROM items WHERE container_parent=? AND perfil_drive=? AND disponible=1''',(container_id,profile))}
+        for record in records:
+            if record['id'] in metadata:record.update(metadata[record['id']])
+            record['has_cover']=bool(self._item_has_cover(record, profile))
+        return [{key:value for key,value in record.items() if key!='path'} for record in records]
     def _dispatch(self,db,action,p):
         profile=preferencia(db,'id_perfil_drive','')
         manager=ItemsManager(db)
         if action=='bootstrap':
-            return {'prefs':{r['clave']:r['valor'] for r in db.execute("SELECT * FROM configuracion WHERE clave IN ('tema','zoom','modo','id_perfil_drive','wallpaper','wallpaper_opacity','wallpaper_blur','wallpaper_positions','container_wallpaper','container_background_opacity','container_background_blur')")},'count':db.execute("SELECT count(*) FROM items WHERE disponible=1 AND oculto=0 AND container_parent='' AND perfil_drive=?",(profile,)).fetchone()[0]}
+            return {'prefs':{r['clave']:r['valor'] for r in db.execute("SELECT * FROM configuracion WHERE clave IN ('tema','zoom','modo','id_perfil_drive','wallpaper','wallpaper_opacity','wallpaper_blur','wallpaper_positions','container_wallpaper','container_background_opacity','container_background_blur','confirm_delete')")},'count':db.execute("SELECT count(*) FROM items WHERE disponible=1 AND oculto=0 AND container_parent='' AND perfil_drive=?",(profile,)).fetchone()[0]}
+        if action=='undo_delete': return self._undo_deletion(db)
         if action=='ready':
             metrics={'ready_ms':round((time.perf_counter()-self._started)*1000,1),'renderer':'edgechromium','frontend':p}
             (self._dir/'performance.json').write_text(json.dumps(metrics,indent=2),encoding='utf-8')
@@ -238,49 +309,29 @@ class DesktopAPI:
             filters=limpiar_todos_filtros()
             for token in p.get('tokens',[]): filters=agregar_filtro(str(token),filters)
             sql,args=construir_query_sql(filters,profile)
-            sql=sql.replace('SELECT i.*','SELECT i.drive_id,i.titulo,i.autor,i.tipo,i.tipo_contenido,i.formato,i.estado_lectura,i.es_favorito,i.rating,i.tamano_bytes,i.categoria_macro,i.indexar_contenido,i.oculto,i.container_parent,i.fijado,i.search_override,i.ruta_relativa')
+            sql=sql.replace('SELECT i.*','SELECT i.drive_id,i.titulo,i.autor,i.tipo,i.tipo_contenido,i.formato,i.estado_lectura,i.es_favorito,i.rating,i.tamano_bytes,i.categoria_macro,i.indexar_contenido,i.oculto,i.container_parent,i.fijado,i.search_override,i.ruta_relativa,i.perfil_drive')
             items=[dict(r) for r in db.execute(sql,args)]
-            terms=[fts_query(p['valor']) for p in filters['pildoras'] if p['tipo']=='texto_titulo']
-            if terms:
+            if any(p['tipo']=='texto_titulo' for p in filters['pildoras']):
                 cache={}
                 items=[item for item in items if self._internal_searchable(db,item,cache)]
-            if terms:
-                for item in items:
-                    if item['tipo']=='curso' and item['indexar_contenido']:
-                        matches=[]
-                        for term in terms:
-                            matches.extend(r[0] for r in db.execute('''SELECT e.titulo FROM container_entries e
-                                JOIN container_entries_fts f ON f.rowid=e.id
-                                WHERE e.container_drive_id=? AND container_entries_fts MATCH ? LIMIT 3''',
-                                (item['drive_id'],term)))
-                        item['coincidencia_interna']=list(dict.fromkeys(matches))[:3]
+            if any(p['tipo']=='sin_portada' for p in filters['pildoras']):
+                items=[item for item in items if not self._item_has_cover(item, profile)]
+            elif any(p['tipo']=='con_portada' for p in filters['pildoras']):
+                items=[item for item in items if self._item_has_cover(item, profile)]
+            for item in items:
+                item['has_cover']=bool(self._item_has_cover(item, profile))
             total=db.execute("SELECT count(*) FROM items WHERE perfil_drive=? AND disponible=1 AND oculto=0 AND container_parent=''",(profile,)).fetchone()[0]
             return {'items':items,'total':total,'filters':filters['pildoras']}
         if action=='set_deep_search':
             item=self._item(db,p['id'])
-            if item['tipo']!='curso' or type(p.get('enabled')) is not bool:
+            if item['tipo']!='curso' or item['container_parent'] or type(p.get('enabled')) is not bool:
                 raise ValueError('Configuración del contenedor inválida')
             enabled=int(p['enabled'])
-            try:
-                self._dispatch(db,'container',{'id':item['drive_id']})
-                records=list(self._containers.get(item['drive_id'],{}).values())
-            except FileNotFoundError:
-                # Let the existing catalog snapshot remain searchable when DriveFS is temporarily unavailable.
-                records=[{'id':row['drive_id'],'title':row['titulo'],'path':row['ruta_relativa'],
-                          'size':row['tamano_bytes'],'mime':row['mime_type']}
-                         for row in db.execute('''SELECT drive_id,titulo,ruta_relativa,tamano_bytes,mime_type
-                             FROM container_entries WHERE container_drive_id=? AND perfil_drive=?''',
-                             (item['drive_id'],profile))]
-            with db:
-                db.execute('DELETE FROM container_entries WHERE container_drive_id=? AND perfil_drive=?',(item['drive_id'],profile))
-                db.execute('UPDATE items SET indexar_contenido=? WHERE id=?',(enabled,item['id']))
-                db.executemany('''INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive)
-                    VALUES(?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
-                    container_drive_id=excluded.container_drive_id,titulo=excluded.titulo,
-                    ruta_relativa=excluded.ruta_relativa,tamano_bytes=excluded.tamano_bytes,
-                    mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive''',
-                    [(item['drive_id'],row['id'],row['title'],row['path'],row.get('size') or 0,row.get('mime'),profile)
-                     for row in records if not row.get('folder')])
+            if enabled and not db.execute('SELECT 1 FROM items WHERE container_parent=? AND perfil_drive=? LIMIT 1',
+                                          (item['drive_id'],profile)).fetchone():
+                try:self._dispatch(db,'container',{'id':item['drive_id']})
+                except FileNotFoundError:pass
+            with db:db.execute('UPDATE items SET indexar_contenido=? WHERE id=?',(enabled,item['id']))
             return {'indexar_contenido':int(p['enabled'])}
         if action=='detail':
             item=self._item(db,p['id']); item['url']=manager.url(p['id']); return item
@@ -289,11 +340,30 @@ class DesktopAPI:
             methods={'titulo':manager.cambiar_titulo,'autor':manager.cambiar_autor,'notas':manager.actualizar_notas,'rating':manager.cambiar_rating,'estado_lectura':manager.cambiar_estado_lectura,'es_favorito':manager.cambiar_favorito,'etiquetas':TagsManager(db).actualizar_etiquetas_item}
             if p['field'] not in methods: raise ValueError('Campo no editable')
             methods[p['field']](p['id'],p['value']); return self._item(db,p['id'])
+        if action=='selection_properties':
+            ids=p.get('ids')
+            if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)) or any(not isinstance(ident,str) for ident in ids):
+                raise ValueError('Selección inválida')
+            fields=('fijado','es_favorito','oculto','rating','estado_lectura')
+            columns=','.join(f'MIN({field}) AS min_{field},MAX({field}) AS max_{field}' for field in fields)
+            result={}
+            for start in range(0,len(ids),500):
+                chunk=ids[start:start+500]
+                marks=','.join('?' for _ in chunk)
+                row=db.execute(f'SELECT COUNT(*) AS total,SUM(CASE WHEN ultimo_acceso IS NOT NULL AND recent_hidden=0 THEN 1 ELSE 0 END) AS recent_count,{columns} FROM items WHERE perfil_drive=? AND disponible=1 AND drive_id IN ({marks})',
+                               [profile,*chunk]).fetchone()
+                if row['total']!=len(chunk):raise ValueError('Selección fuera del perfil activo')
+                result['recent_count']=result.get('recent_count',0)+row['recent_count']
+                for field in fields:
+                    value=row[f'min_{field}'] if row[f'min_{field}']==row[f'max_{field}'] else None
+                    if field not in result:result[field]=value
+                    elif result[field]!=value:result[field]=None
+            return result
         if action=='bulk_update':
             ids=p.get('ids');field=p.get('field');value=p.get('value')
             if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)):
                 raise ValueError('Selección inválida')
-            if field in ('es_favorito','fijado') and type(value) is bool:value=int(value)
+            if field in ('es_favorito','fijado','oculto') and type(value) is bool:value=int(value)
             elif field=='rating' and type(value) is int and value in range(6):pass
             elif field=='estado_lectura' and value in ('pendiente','interesado','leyendo','leido','abandonado'):pass
             else:raise ValueError('Cambio masivo inválido')
@@ -312,7 +382,17 @@ class DesktopAPI:
             item=self._item(db,p['id'])
             with db:db.execute('UPDATE items SET recent_hidden=1 WHERE id=?',(item['id'],))
             return True
+        if action=='bulk_remove_recent':
+            ids=p.get('ids')
+            if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)) or any(not isinstance(ident,str) for ident in ids):
+                raise ValueError('Selección inválida')
+            items=[self._item(db,ident) for ident in ids]
+            with db:
+                changed=db.executemany('UPDATE items SET recent_hidden=1 WHERE id=? AND ultimo_acceso IS NOT NULL AND recent_hidden=0',
+                                       [(item['id'],) for item in items]).rowcount
+            return {'updated':changed}
         if action=='tags': return obtener_etiquetas_ordenadas_frecuencia(db,profile)
+        if action=='tag_suggestions': return obtener_sugerencias_etiquetas(db,profile)
         if action=='taxonomy_edit':
             return edit_taxonomy(db,profile,p.get('kind'),p.get('operation'),p.get('old'),p.get('new',''))
         if action=='authors':
@@ -364,13 +444,19 @@ class DesktopAPI:
             ids=p.get('ids',[])
             if not isinstance(ids,list): raise ValueError('Selección inválida')
             for ident in ids: self._item(db,ident)
-            return assign_items(db,profile,ids,p.get('container_id'),p.get('name'))
+            result=assign_items(db,profile,ids,p.get('container_id'),p.get('name'))
+            self._containers.clear();self._container_cache_info.clear()
+            return result
         if action=='ungroup_container':
             self._item(db,p['id'])
-            return ungroup_container(db,profile,p['id'])
+            result=ungroup_container(db,profile,p['id'])
+            self._containers.clear();self._container_cache_info.clear()
+            return result
         if action=='import_container':
             if not isinstance(p.get('path'),str): raise ValueError('Carpeta inválida')
-            return import_container_folder(db,profile,p['path'])
+            result=import_container_folder(db,profile,p['path'])
+            self._containers.clear();self._container_cache_info.clear()
+            return result
         if action=='import_file':
             if not isinstance(p.get('path'),str):raise ValueError('Archivo inválido')
             return import_library_file(db,profile,p['path'],thumbnail_dir=self._dir/'portadas_auto')
@@ -381,8 +467,13 @@ class DesktopAPI:
             try: return filedialog.askdirectory(parent=root,title='Selecciona la carpeta para importar') or None
             finally: root.destroy()
         if action=='delete_item':
-            self._item(db,p['id'])
-            return manager.eliminar_item(p['id'])
+            item=self._item(db,p['id'])
+            path=manager.ruta_local(item)
+            if not path.exists(): path=Path(manager.auto_reparar_ruta(p['id']))
+            snapshot=self._capture_deletion(db,path,{p['id']},p['id'] if item['tipo']=='curso' else None)
+            result=manager.eliminar_item(p['id'])
+            self._remember_deletion(snapshot)
+            return result
         if action=='preference':
             key,value=p['key'],str(p['value'])
             if key=='tema' and value not in ('auto','dark','light'): raise ValueError('Tema inválido')
@@ -393,8 +484,9 @@ class DesktopAPI:
             elif key=='container_background_opacity' and not 0<=int(value)<=100: raise ValueError('Opacidad del fondo de contenedores inválida')
             elif key=='container_background_blur' and not 0<=int(value)<=30: raise ValueError('Desenfoque del fondo de contenedores inválido')
             elif key=='show_overlays' and value not in ('true','false'): raise ValueError('Preferencia inválida')
+            elif key=='confirm_delete' and value not in ('true','false'): raise ValueError('Preferencia inválida')
             elif key=='wallpaper': pass
-            elif key not in ('tema','modo','zoom','wallpaper','wallpaper_opacity','wallpaper_blur','container_wallpaper','container_background_opacity','container_background_blur'): raise ValueError('Preferencia inválida')
+            elif key not in ('tema','modo','zoom','wallpaper','wallpaper_opacity','wallpaper_blur','container_wallpaper','container_background_opacity','container_background_blur','confirm_delete'): raise ValueError('Preferencia inválida')
             with db: configurar(db,key,value)
             return True
         if action=='wallpapers_list':
@@ -541,12 +633,13 @@ class DesktopAPI:
                 covers=self._dir/'portadas'; covers.mkdir(exist_ok=True)
                 temp=covers/(p['id']+'.tmp'); image.save(temp,'JPEG',quality=82,optimize=True,progressive=True)
                 os.replace(temp,covers/(p['id']+'.jpg'))
+                self._invalidate_cover_cache()
             return True
         if action=='sync':
             with self._sync_lock:result=DriveSync(db).sincronizar_biblioteca(perfil=profile or None)
-            DriveSync(db).exportar_libros(self._dir/'export_libros.json'); self._containers.clear(); return result
+            DriveSync(db).exportar_libros(self._dir/'export_libros.json'); self._containers.clear(); self._container_cache_info.clear(); self._profile_sources=None; self._invalidate_cover_cache(); return result
         if action=='profiles': return detectar_perfiles_drive()
-        if action=='profile': cambiar_perfil_activo(p['id'],db); self._containers.clear(); return True
+        if action=='profile': cambiar_perfil_activo(p['id'],db); self._containers.clear(); self._container_cache_info.clear(); self._profile_sources=None; self._invalidate_cover_cache(); return True
         if action=='backup':
             return crear_backup_en_biblioteca(library_root(db,profile),db,self._dir)
         if action=='backup_list':
@@ -565,8 +658,18 @@ class DesktopAPI:
             item=self._item(db,p['id'])
             if item['tipo']!='curso': raise ValueError('No es un contenedor')
             with db:db.execute('UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP WHERE id=?',(item['id'],))
-            source=next((r['ruta_db'] for r in detectar_perfiles_drive() if r['id']==profile),None)
+            if self._profile_sources is None:
+                self._profile_sources={row['id']:row['ruta_db'] for row in detectar_perfiles_drive() if row.get('ruta_db')}
+            source=self._profile_sources.get(profile)
             if not source: raise FileNotFoundError('Perfil DriveFS no disponible')
+            def signature(path):
+                try:
+                    stat=Path(path).stat();return stat.st_mtime_ns,stat.st_size
+                except OSError:return None
+            source_signature=(signature(source),signature(str(source)+'-wal'))
+            cached=self._container_cache_info.get(p['id'])
+            if cached==source_signature and p['id'] in self._containers:
+                return self._container_payload(db,p['id'],profile)
             with closing(conectar_db_drive_ro(source)) as conn:
                 conn.execute('BEGIN'); meta=Metadata(conn)
             root=None
@@ -591,28 +694,40 @@ class DesktopAPI:
                 try: drive_id,_=extraer_ids_proto(node['proto'])
                 except (ValueError,UnicodeError): continue
                 records.append({'id':drive_id,'title':'/'.join(parts[len(rootparts):]),'size':node['file_size'] or 0,'path':str(PureWindowsPath(*parts)),'mime':node['mime_type']})
-            files=[record for record in records if not record.get('folder')]
+            folder_sizes={}
+            for record in records:
+                if record.get('folder'):continue
+                parts=record['title'].casefold().split('/')
+                for depth in range(1,len(parts)):
+                    key='/'.join(parts[:depth]);folder_sizes[key]=folder_sizes.get(key,0)+record['size']
             for folder in (record for record in records if record.get('folder')):
-                prefix=folder['title'].casefold()+'/'
-                folder['size']=sum(record['size'] for record in files if record['title'].casefold().startswith(prefix))
+                folder['size']=folder_sizes.get(folder['title'].casefold(),0)
             # Materialize only entries confirmed by DriveFS. Their Drive IDs preserve personal metadata.
+            existing={row['drive_id']:row for row in db.execute('''SELECT drive_id,titulo,titulo_personalizado,tipo,tipo_contenido,formato,
+                categoria_macro,ruta_relativa,tamano_bytes,mime_type,disponible FROM items
+                WHERE container_parent=? AND perfil_drive=?''',(item['drive_id'],profile))}
+            changed=[]
+            for record in records:
+                filename=PureWindowsPath(record['path']).name
+                folder=bool(record.get('folder'))
+                kind='curso' if folder else (classify_file(filename,allow_other=True) or 'archivo')
+                content='contenedor' if folder else 'documento' if kind=='pdf' else 'otro' if kind=='archivo' else kind
+                title=filename if folder else clean_book_title_and_author(filename,kind)[0] if kind=='pdf' else Path(filename).stem
+                fmt='' if folder else Path(filename).suffix.lstrip('.').upper()
+                old=existing.get(record['id'])
+                if old and old['disponible'] and old['tipo']==kind and old['tipo_contenido']==content and old['formato']==fmt and old['categoria_macro']=='Containers' and old['ruta_relativa']==record['path'] and old['tamano_bytes']==record['size'] and old['mime_type']==record['mime'] and (old['titulo_personalizado'] or old['titulo']==title):
+                    continue
+                changed.append((record['id'],title,'',kind,content,fmt,record['path'],
+                                'portadas/'+record['id']+'.jpg',record['size'],record['mime'],profile,item['drive_id']))
             with db:
-                for record in records:
-                    filename=PureWindowsPath(record['path']).name
-                    folder=bool(record.get('folder'))
-                    kind='curso' if folder else (classify_file(filename,allow_other=True) or 'archivo')
-                    content='contenedor' if folder else 'documento' if kind=='pdf' else 'otro' if kind=='archivo' else kind
-                    title=filename if folder else clean_book_title_and_author(filename,kind)[0] if kind=='pdf' else Path(filename).stem
-                    db.execute('''INSERT INTO items(drive_id,titulo,autor,tipo,tipo_contenido,formato,categoria_macro,
+                db.executemany('''INSERT INTO items(drive_id,titulo,autor,tipo,tipo_contenido,formato,categoria_macro,
                         ruta_relativa,ruta_portada,tamano_bytes,mime_type,perfil_drive,disponible,container_parent)
                         VALUES(?,?,?,?,?,?,'Containers',?,?,?,?,?,1,?) ON CONFLICT(drive_id) DO UPDATE SET
                         titulo=CASE WHEN items.titulo_personalizado=1 THEN items.titulo ELSE excluded.titulo END,
                         tipo=excluded.tipo,tipo_contenido=excluded.tipo_contenido,formato=excluded.formato,
                         categoria_macro='Containers',ruta_relativa=excluded.ruta_relativa,
                         tamano_bytes=excluded.tamano_bytes,mime_type=excluded.mime_type,
-                        perfil_drive=excluded.perfil_drive,disponible=1,container_parent=excluded.container_parent''',
-                        (record['id'],title,'',kind,content,'' if folder else Path(filename).suffix.lstrip('.').upper(),
-                         record['path'],'portadas/'+record['id']+'.jpg',record['size'],record['mime'],profile,item['drive_id']))
+                        perfil_drive=excluded.perfil_drive,disponible=1,container_parent=excluded.container_parent''',changed)
             known={record['id'] for record in records}
             root_parts=PureWindowsPath(item['ruta_relativa']).parts
             for entry in db.execute('''SELECT drive_id,titulo,ruta_relativa,tamano_bytes,mime_type FROM container_entries
@@ -627,13 +742,9 @@ class DesktopAPI:
                 with db:db.execute('''UPDATE items SET disponible=1,container_parent=?,ruta_relativa=?
                     WHERE drive_id=? AND perfil_drive=?''',(item['drive_id'],entry['ruta_relativa'],entry['drive_id'],profile))
             records.sort(key=lambda r:r['title'].casefold())
-            for record in records:
-                meta=db.execute('''SELECT titulo,autor,etiquetas,rating,es_favorito,estado_lectura,
-                    tipo_contenido,formato,fijado,search_override,ultimo_acceso FROM items
-                    WHERE drive_id=? AND perfil_drive=?''',(record['id'],profile)).fetchone()
-                if meta:record.update({key:meta[key] for key in meta.keys()})
             self._containers[p['id']]={r['id']:r for r in records}
-            return [{k:v for k,v in r.items() if k!='path'} for r in records]
+            self._container_cache_info[p['id']]=source_signature
+            return self._container_payload(db,p['id'],profile)
         if action=='container_view':
             item=self._item(db,p['id'])
             if item['tipo']!='curso': raise ValueError('No es un contenedor')
@@ -820,17 +931,18 @@ class DesktopAPI:
             if not target.is_dir(): raise FileNotFoundError('La carpeta ya no está disponible')
             ids={row['id'] for row in self._containers.get(p['container'],{}).values()
                  if not row.get('folder') and row.get('title','').replace('\\','/').casefold().startswith(prefix)}
+            entry_rows=db.execute('SELECT drive_id,ruta_relativa FROM container_entries WHERE container_drive_id=? AND perfil_drive=?',
+                                  (p['container'],profile)).fetchall()
+            container_parts=PureWindowsPath(container['ruta_relativa']).parts
+            folder_parts=tuple(container_parts)+tuple(parts)
+            for row in entry_rows:
+                path_parts=PureWindowsPath(row['ruta_relativa']).parts
+                if len(path_parts)>len(folder_parts) and all(a.casefold()==b.casefold() for a,b in zip(path_parts,folder_parts)):
+                    ids.add(row['drive_id'])
+            snapshot=self._capture_deletion(db,target,ids)
             from send2trash import send2trash as send2trash_fn
             send2trash_fn(str(target))
             with db:
-                entry_rows=db.execute('SELECT drive_id,ruta_relativa FROM container_entries WHERE container_drive_id=? AND perfil_drive=?',
-                                      (p['container'],profile)).fetchall()
-                container_parts=PureWindowsPath(container['ruta_relativa']).parts
-                folder_parts=tuple(container_parts)+tuple(parts)
-                for row in entry_rows:
-                    path_parts=PureWindowsPath(row['ruta_relativa']).parts
-                    if len(path_parts)>len(folder_parts) and all(a.casefold()==b.casefold() for a,b in zip(path_parts,folder_parts)):
-                        ids.add(row['drive_id'])
                 for ident in ids:
                     db.execute('DELETE FROM container_entries WHERE drive_id=? AND container_drive_id=?',(ident,p['container']))
                     db.execute('UPDATE items SET disponible=0 WHERE drive_id=? AND perfil_drive=?',(ident,profile))
@@ -838,6 +950,7 @@ class DesktopAPI:
                         VALUES(?,'','__removed__',?) ON CONFLICT(drive_id) DO UPDATE SET expected_relative='',
                         container_drive_id='__removed__',perfil_drive=excluded.perfil_drive,created_at=CURRENT_TIMESTAMP''',(ident,profile))
             for ident in ids: self._containers.get(p['container'],{}).pop(ident,None)
+            self._remember_deletion(snapshot)
             return {'deleted':len(ids)}
         if action=='container_reveal':
             container=self._item(db,p['container'])
@@ -872,6 +985,7 @@ class DesktopAPI:
                 with db:db.execute('UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP,recent_hidden=0 WHERE drive_id=?',(p['id'],))
             else:
                 from send2trash import send2trash
+                snapshot=self._capture_deletion(db,path,{p['id']})
                 send2trash(str(path)); del self._containers[p['container']][p['id']]
                 with db:
                     db.execute('DELETE FROM container_entries WHERE drive_id=? AND container_drive_id=?',(p['id'],p['container']))
@@ -879,6 +993,7 @@ class DesktopAPI:
                     db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
                         VALUES(?,'','__removed__',?) ON CONFLICT(drive_id) DO UPDATE SET expected_relative='',
                         container_drive_id='__removed__',perfil_drive=excluded.perfil_drive,created_at=CURRENT_TIMESTAMP''',(p['id'],profile))
+                self._remember_deletion(snapshot)
             return True
         if action=='companion_get':
             from .companion import CompanionEngine

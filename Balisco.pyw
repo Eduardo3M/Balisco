@@ -98,9 +98,12 @@ def desktop(debug=False):
     except Exception:
         pass
 
+    ui_dir = base_path / 'ui'
+    ui_version = max((ui_dir / name).stat().st_mtime_ns for name in ('index.html', 'styles.css', 'app.js'))
+    ui_url = f"{ui_dir / 'index.html'}?v={ui_version}"
     window = webview.create_window(
         'Balisco',
-        str(base_path / 'ui' / 'index.html'),
+        ui_url,
         js_api=api,
         width=win_w,
         height=win_h,

@@ -61,6 +61,13 @@ class CoreTests(unittest.TestCase):
         self.run_sync(); item=self.manager.obtener('drive_id_004')
         self.assertEqual(item['titulo'],'Mi Roma'); self.assertEqual(item['rating'],5)
         self.assertIn('Roma nueva.pdf',item['ruta_relativa']); self.assertEqual(item['notas'],'Mi apunte único')
+    def test_repeat_sync_does_not_rewrite_unchanged_items(self):
+        with self.db:
+            self.db.execute('CREATE TABLE sync_audit(id TEXT)')
+            self.db.execute('''CREATE TRIGGER sync_audit_items AFTER UPDATE ON items BEGIN
+                INSERT INTO sync_audit VALUES(old.drive_id); END''')
+        self.run_sync()
+        self.assertEqual(self.db.execute('SELECT count(*) FROM sync_audit').fetchone()[0],0)
     def test_trashed_is_hidden_but_notes_retained(self):
         self.manager.actualizar_notas('drive_id_004','persistir')
         c=sqlite3.connect(self.source); c.execute('UPDATE items SET trashed=1 WHERE stable_id=3'); c.commit(); c.close()
@@ -119,6 +126,64 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(obtener_etiquetas_ordenadas_frecuencia(self.db),[dict(tag='arte',total=2)])
         with self.db: self.db.execute("UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP,estado_lectura='leido' WHERE drive_id='drive_id_004'")
         self.assertEqual(obtener_semi_aleatorio_contextual(self.db)['drive_id'],'drive_id_007')
+    def test_tag_suggestions_recency(self):
+        from core.tags_manager import obtener_sugerencias_etiquetas
+        tags=TagsManager(self.db)
+        tags.asignar_etiquetas_en_lote(['drive_id_004'],'+historia')
+        tags.asignar_etiquetas_en_lote(['drive_id_007'],'+diseno')
+        with self.db:
+            self.db.execute("UPDATE items SET ultimo_acceso='2026-01-01 10:00:00' WHERE drive_id='drive_id_004'")
+            self.db.execute("UPDATE items SET ultimo_acceso='2026-10-25 12:00:00' WHERE drive_id='drive_id_007'")
+        suggs = {s['tag']: s for s in obtener_sugerencias_etiquetas(self.db)}
+        self.assertEqual(suggs['diseno']['recent'], '2026-10-25 12:00:00')
+        self.assertEqual(suggs['historia']['recent'], '2026-01-01 10:00:00')
+    def test_advanced_filter_combinations(self):
+        with self.db:
+            self.db.execute("UPDATE items SET rating=4, tamano_bytes=100000000, estado_lectura='leyendo', formato='PDF', notas='Importante' WHERE drive_id='drive_id_004'")
+            self.db.execute("UPDATE items SET rating=2, tamano_bytes=5000000, estado_lectura='leido', formato='EPUB', notas='' WHERE drive_id='drive_id_007'")
+        tags = TagsManager(self.db)
+        tags.asignar_etiquetas_en_lote(['drive_id_004'], '+historia')
+        tags.asignar_etiquetas_en_lote(['drive_id_007'], '+ciencia')
+        
+        # Test rating range & gte
+        f = agregar_filtro('@rating:3-5', limpiar_todos_filtros())
+        self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_004'])
+        f = agregar_filtro('@rating:>=4', limpiar_todos_filtros())
+        self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_004'])
+        
+        # Test format
+        f = agregar_filtro('@formato:pdf,epub', limpiar_todos_filtros())
+        self.assertCountEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_004', 'drive_id_007'])
+        
+        # Test size
+        f = agregar_filtro('@peso:>50mb', limpiar_todos_filtros())
+        self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_004'])
+        f = agregar_filtro('@peso:<10mb', limpiar_todos_filtros())
+        self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_007'])
+        
+        # Test sin_portada and con_portada parsing
+        f = agregar_filtro('@sin:miniatura', limpiar_todos_filtros())
+        self.assertTrue(any(p['tipo'] == 'sin_portada' for p in f['pildoras']))
+        f = agregar_filtro('@con:miniatura', limpiar_todos_filtros())
+        self.assertTrue(any(p['tipo'] == 'con_portada' for p in f['pildoras']))
+        f = agregar_filtro('@sin:portada', limpiar_todos_filtros())
+        self.assertTrue(any(p['tipo'] == 'sin_portada' for p in f['pildoras']))
+        f = agregar_filtro('@con:portada', limpiar_todos_filtros())
+        self.assertTrue(any(p['tipo'] == 'con_portada' for p in f['pildoras']))
+
+        # Test state exclusion
+        f = agregar_filtro('@!leido', limpiar_todos_filtros())
+        self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_004'])
+        
+        # Test tag OR
+        f = agregar_filtro('+historia|ciencia', limpiar_todos_filtros())
+        self.assertCountEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_004', 'drive_id_007'])
+        
+        # Test maintenance filters
+        f = agregar_filtro('@con:notas', limpiar_todos_filtros())
+        self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_004'])
+        f = agregar_filtro('@sin:notas', limpiar_todos_filtros())
+        self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_007'])
     def test_unnamed_course_with_video(self):
         c=sqlite3.connect(self.source); c.execute("UPDATE items SET local_title='Blender 3D' WHERE stable_id=7"); c.commit(); c.close()
         self.run_sync()

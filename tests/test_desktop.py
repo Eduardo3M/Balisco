@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -30,6 +31,58 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(len(self.call('query')['items']),1)
         self.assertFalse(self.api.call('detail',{'id':'test_drive_002'})['ok'])
         self.assertFalse(self.api.call('update',{'id':'test_drive_002','field':'rating','value':5})['ok'])
+    @unittest.skipUnless(os.name=='nt','La restauración usa la papelera de Windows')
+    def test_delete_undo_restores_each_file_and_metadata(self):
+        folder=self.root/'Mi unidad'/'Biblioteca'
+        folder.mkdir(parents=True)
+        first=folder/'book.pdf'; second=folder/'third.pdf'
+        first.write_bytes(b'first'); second.write_bytes(b'second')
+        with closing(self.api._connect()) as db:
+            with db:
+                configurar(db,'unidad_drive:test',str(self.root))
+                db.execute("UPDATE items SET notas='nota recuperable',rating=4 WHERE drive_id='test_drive_001'")
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES('test_drive_003','Tercero','pdf',?, 'test')",(r'Mi unidad\Biblioteca\third.pdf',))
+        self.call('preference',key='confirm_delete',value='false')
+        self.assertEqual(self.call('bootstrap')['prefs']['confirm_delete'],'false')
+        self.call('delete_item',id='test_drive_001')
+        self.call('delete_item',id='test_drive_003')
+        self.assertFalse(first.exists());self.assertFalse(second.exists())
+        self.assertEqual(self.call('undo_delete')['name'],'third.pdf')
+        self.assertTrue(second.exists());self.assertFalse(first.exists())
+        self.assertEqual(self.call('undo_delete')['name'],'book.pdf')
+        self.assertEqual(first.read_bytes(),b'first')
+        self.assertEqual(self.call('detail',id='test_drive_001')['notas'],'nota recuperable')
+        self.assertEqual(self.call('detail',id='test_drive_001')['rating'],4)
+        self.assertFalse(self.call('undo_delete')['restored'])
+    @unittest.skipUnless(os.name=='nt','La restauración usa la papelera de Windows')
+    def test_undo_container_folder_restores_index_and_files(self):
+        folder=self.root/'Mi unidad'/'Biblioteca'/'Containers'/'Course'/'Section'
+        folder.mkdir(parents=True)
+        file=folder/'lesson.pdf';file.write_bytes(b'lesson')
+        relative=r'Mi unidad\Biblioteca\Containers\Course'
+        with closing(self.api._connect()) as db:
+            with db:
+                configurar(db,'unidad_drive:test',str(self.root))
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES('test_container','Course','curso',?,'test')",(relative,))
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,container_parent,notas) VALUES('test_lesson','Lesson','pdf',?,'test','test_container','recordar')",(relative+r'\Section\lesson.pdf',))
+                db.execute("INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,perfil_drive) VALUES('test_container','test_lesson','lesson.pdf',?,'test')",(relative+r'\Section\lesson.pdf',))
+        records={'folder_section':{'id':'folder_section','title':'Section','path':relative+r'\Section','folder':True},
+                 'test_lesson':{'id':'test_lesson','title':'Section/lesson.pdf','path':relative+r'\Section\lesson.pdf','size':6,'mime':'application/pdf'}}
+        original=self.api._dispatch
+        def dispatch(db,action,payload):
+            if action=='container':
+                self.api._containers[payload['id']]=records.copy()
+                return list(records.values())
+            return original(db,action,payload)
+        with patch.object(self.api,'_dispatch',side_effect=dispatch):
+            self.assertEqual(self.call('container_trash_folder',container='test_container',path=['Section'])['deleted'],1)
+        self.assertFalse(folder.exists())
+        self.assertEqual(self.call('undo_delete')['name'],'Section')
+        self.assertEqual(file.read_bytes(),b'lesson')
+        self.assertEqual(self.call('detail',id='test_lesson')['notas'],'recordar')
+        with closing(self.api._connect()) as db:
+            self.assertIsNotNone(db.execute("SELECT 1 FROM container_entries WHERE drive_id='test_lesson'").fetchone())
+            self.assertIsNone(db.execute("SELECT 1 FROM pending_container_moves WHERE drive_id='test_lesson'").fetchone())
     def test_author_notes_fts(self):
         self.call('update',id='test_drive_001',field='autor',value='Lauricella')
         self.assertEqual(len(self.call('query',tokens=['Lauricella'])['items']),1)
@@ -79,6 +132,38 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual([r['drive_id'] for r in self.call('query',tokens=['@recientes'])['items']],['test_mort'])
         self.call('remove_recent',id='test_mort')
         self.assertFalse(self.call('query',tokens=['@recientes'])['items'])
+    def test_bulk_remove_recent_only_changes_active_profile(self):
+        with closing(self.api._connect()) as db:
+            with db:
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,ultimo_acceso) VALUES('test_recent_second','Segundo','pdf','second.pdf','test',CURRENT_TIMESTAMP)")
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,fecha_agregado,ultimo_acceso) VALUES('test_recent_third','Tercero','pdf','third.pdf','test','2020-01-01',CURRENT_TIMESTAMP)")
+                db.execute("UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP WHERE drive_id='test_drive_001'")
+                db.execute("UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP WHERE drive_id='test_drive_002'")
+        ids=['test_drive_001','test_recent_second']
+        self.assertEqual(self.call('selection_properties',ids=ids)['recent_count'],2)
+        self.assertFalse(self.api.call('bulk_remove_recent',{'ids':[ids[0],'test_drive_002']})['ok'])
+        self.assertEqual(self.call('selection_properties',ids=ids)['recent_count'],2)
+        self.assertEqual(self.call('bulk_remove_recent',ids=ids)['updated'],2)
+        self.assertEqual(self.call('selection_properties',ids=ids)['recent_count'],0)
+        self.assertEqual([item['drive_id'] for item in self.call('query',tokens=['@recientes'])['items']],['test_recent_third'])
+        self.assertEqual(self.call('query')['items'][0]['drive_id'],'test_recent_third')
+        self.assertEqual(self.call('query',tokens=['@orden:abiertos'])['items'][0]['drive_id'],'test_recent_third')
+        self.assertEqual(self.call('bulk_remove_recent',ids=ids)['updated'],0)
+    def test_selection_properties_only_marks_shared_values(self):
+        with closing(self.api._connect()) as db:
+            with db:
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,rating,es_favorito,estado_lectura) VALUES('test_other','Otro','pdf','other.pdf','test',5,1,'abandonado')")
+                db.execute("UPDATE items SET rating=5,es_favorito=1,estado_lectura='abandonado' WHERE drive_id='test_drive_001'")
+        ids=['test_drive_001','test_other']
+        shared=self.call('selection_properties',ids=ids)
+        self.assertEqual((shared['rating'],shared['es_favorito'],shared['estado_lectura']),(5,1,'abandonado'))
+        self.call('bulk_update',ids=['test_other'],field='rating',value=2)
+        self.call('bulk_update',ids=['test_other'],field='es_favorito',value=False)
+        self.call('bulk_update',ids=['test_other'],field='estado_lectura',value='pendiente')
+        mixed=self.call('selection_properties',ids=ids)
+        self.assertIsNone(mixed['rating'])
+        self.assertIsNone(mixed['es_favorito'])
+        self.assertIsNone(mixed['estado_lectura'])
     def test_hidden_sort_and_taxonomy_edit(self):
         with closing(self.api._connect()) as db:
             db.execute("UPDATE items SET tamano_bytes=200,fecha_agregado='2020-01-01' WHERE drive_id='test_drive_001'")
@@ -89,6 +174,10 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual([r['drive_id'] for r in self.call('query')['items']],['test_drive_001'])
         self.assertEqual([r['drive_id'] for r in self.call('query',tokens=['@ocultos'])['items']],['test_drive_003'])
         self.call('set_hidden',id='test_drive_003',hidden=False)
+        self.call('bulk_update',ids=['test_drive_003'],field='oculto',value=True)
+        self.assertEqual([r['drive_id'] for r in self.call('query',tokens=['@ocultos'])['items']],['test_drive_003'])
+        self.call('bulk_update',ids=['test_drive_003'],field='oculto',value=False)
+        self.assertIn('test_drive_003',[r['drive_id'] for r in self.call('query')['items']])
         self.call('update',id='test_drive_001',field='etiquetas',value='+historia')
         self.assertEqual(self.call('taxonomy_edit',kind='tag',operation='rename',old='historia',new='arte')['updated'],1)
         self.assertEqual(self.call('query',tokens=['+arte'])['items'][0]['drive_id'],'test_drive_001')
@@ -247,6 +336,11 @@ class DesktopTests(unittest.TestCase):
         self.assertTrue(self.call('cover',id='test_drive_001').startswith('data:image/jpeg;base64,'))
         with Image.open(self.root/'portadas'/'test_drive_001.jpg') as image:self.assertEqual(image.format,'JPEG')
         self.assertFalse(self.api.call('save_cover',{'id':'test_drive_001','data':'bad!'})['ok'])
+        # Test query filtering with @con:miniatura and @sin:miniatura
+        con_res = self.call('query', tokens=['@con:miniatura'])['items']
+        self.assertTrue(any(it['drive_id'] == 'test_drive_001' for it in con_res))
+        sin_res = self.call('query', tokens=['@sin:miniatura'])['items']
+        self.assertFalse(any(it['drive_id'] == 'test_drive_001' for it in sin_res))
     def test_open_routes_without_launching(self):
         with patch('core.items_manager.webbrowser.open',return_value=True) as opener:
             self.call('open',id='test_drive_001',mode='web')
@@ -272,6 +366,8 @@ class DesktopTests(unittest.TestCase):
             self.assertEqual({row['title'] for row in resources},{'Tema','Tema/leccion.mp4'})
             self.assertTrue(self.call('detail',id='course_id_4')['disponible'])
             self.assertTrue(self.call('detail',id='course_id_5')['disponible'])
+            with patch('core.desktop_api.Metadata',side_effect=AssertionError('Unchanged DriveFS was scanned twice')):
+                self.assertEqual(len(self.call('container',id='course_id_3')),2)
             with patch('core.desktop_api.os.startfile',create=True) as launch:
                 self.call('container_open',container='course_id_3',id='course_id_5',mode='local')
                 self.assertIn('leccion.mp4',launch.call_args.args[0])

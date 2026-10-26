@@ -278,7 +278,12 @@ class DriveSync:
             check_cancelled()
             self.db.execute("DELETE FROM pending_container_moves WHERE perfil_drive=? AND created_at<datetime('now','-1 day')",(perfil,))
             self.db.executemany('DELETE FROM pending_container_moves WHERE drive_id=?',[(ident,) for ident in resolved])
-            if not skipped: self.db.execute('UPDATE items SET disponible=0 WHERE perfil_drive=?',(perfil,))
+            if not skipped:
+                self.db.execute('CREATE TEMP TABLE IF NOT EXISTS sync_items_seen(drive_id TEXT PRIMARY KEY) WITHOUT ROWID')
+                self.db.execute('DELETE FROM sync_items_seen')
+                self.db.executemany('INSERT OR IGNORE INTO sync_items_seen(drive_id) VALUES(?)',[(row[0],) for row in rows])
+                self.db.execute('''UPDATE items SET disponible=0 WHERE perfil_drive=? AND disponible=1
+                    AND NOT EXISTS(SELECT 1 FROM sync_items_seen s WHERE s.drive_id=items.drive_id)''',(perfil,))
             self.db.executemany("""INSERT INTO items(drive_id,titulo,autor,tipo,categoria_macro,subcategoria,ruta_relativa,ruta_portada,tamano_bytes,mime_type,perfil_drive,tipo_contenido,formato)
               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
               titulo=CASE WHEN items.titulo_personalizado=1 THEN items.titulo ELSE excluded.titulo END,
@@ -286,19 +291,37 @@ class DriveSync:
               tipo=excluded.tipo,tipo_contenido=excluded.tipo_contenido,formato=excluded.formato,categoria_macro=excluded.categoria_macro,subcategoria=excluded.subcategoria,
               ruta_relativa=excluded.ruta_relativa,ruta_portada=excluded.ruta_portada,tamano_bytes=excluded.tamano_bytes,
               mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive,
-              disponible=1""",rows)
-            self.db.executemany('UPDATE items SET container_parent=? WHERE drive_id=? AND perfil_drive=?',
-                                [(parent,ident,perfil) for ident,parent in internal_ids.items()])
-            self.db.executemany("UPDATE items SET container_parent='' WHERE drive_id=? AND perfil_drive=?",
+              disponible=1 WHERE items.disponible!=1 OR
+              (items.titulo_personalizado=0 AND items.titulo IS NOT excluded.titulo) OR
+              (items.autor='' AND items.autor IS NOT excluded.autor) OR
+              items.tipo IS NOT excluded.tipo OR items.tipo_contenido IS NOT excluded.tipo_contenido OR
+              items.formato IS NOT excluded.formato OR items.categoria_macro IS NOT excluded.categoria_macro OR
+              items.subcategoria IS NOT excluded.subcategoria OR items.ruta_relativa IS NOT excluded.ruta_relativa OR
+              items.ruta_portada IS NOT excluded.ruta_portada OR items.tamano_bytes IS NOT excluded.tamano_bytes OR
+              items.mime_type IS NOT excluded.mime_type OR items.perfil_drive IS NOT excluded.perfil_drive""",rows)
+            self.db.executemany('UPDATE items SET container_parent=? WHERE drive_id=? AND perfil_drive=? AND container_parent IS NOT ?',
+                                [(parent,ident,perfil,parent) for ident,parent in internal_ids.items()])
+            self.db.executemany("UPDATE items SET container_parent='' WHERE drive_id=? AND perfil_drive=? AND container_parent!=''",
                                 [(row[0],perfil) for row in rows if row[0] not in internal_ids and
                                  row[0] not in {move['drive_id'] for move in pending if move['drive_id'] not in resolved}])
             check_cancelled()
-            if not skipped: self.db.execute('DELETE FROM container_entries WHERE perfil_drive=?',(perfil,))
+            if not skipped:
+                self.db.execute('CREATE TEMP TABLE IF NOT EXISTS sync_entries_seen(drive_id TEXT PRIMARY KEY) WITHOUT ROWID')
+                self.db.execute('DELETE FROM sync_entries_seen')
+                self.db.executemany('INSERT OR IGNORE INTO sync_entries_seen(drive_id) VALUES(?)',[(entry[1],) for entry in entries])
+                self.db.execute('''DELETE FROM container_entries WHERE perfil_drive=? AND
+                    NOT EXISTS(SELECT 1 FROM sync_entries_seen s WHERE s.drive_id=container_entries.drive_id)''',(perfil,))
             self.db.executemany('''INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive)
                 VALUES(?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
                 container_drive_id=excluded.container_drive_id,titulo=excluded.titulo,
                 ruta_relativa=excluded.ruta_relativa,tamano_bytes=excluded.tamano_bytes,
-                mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive''',entries)
+                mime_type=excluded.mime_type,perfil_drive=excluded.perfil_drive WHERE
+                container_entries.container_drive_id IS NOT excluded.container_drive_id OR
+                container_entries.titulo IS NOT excluded.titulo OR
+                container_entries.ruta_relativa IS NOT excluded.ruta_relativa OR
+                container_entries.tamano_bytes IS NOT excluded.tamano_bytes OR
+                container_entries.mime_type IS NOT excluded.mime_type OR
+                container_entries.perfil_drive IS NOT excluded.perfil_drive''',entries)
             check_cancelled()
             configurar(self.db,'id_perfil_drive',perfil)
         return dict(indexados=len(rows),omitidos_proto=skipped,perfil=perfil)

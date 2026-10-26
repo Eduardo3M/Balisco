@@ -48,23 +48,10 @@ def conectar(path=None):
       container_drive_id TEXT NOT NULL, perfil_drive TEXT NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
-    CREATE VIRTUAL TABLE IF NOT EXISTS container_entries_fts USING fts5(titulo,content='container_entries',content_rowid='id',tokenize='unicode61 remove_diacritics 2');
     DROP TRIGGER IF EXISTS container_entries_ai;
     DROP TRIGGER IF EXISTS container_entries_ad;
     DROP TRIGGER IF EXISTS container_entries_au;
-    CREATE TRIGGER container_entries_ai AFTER INSERT ON container_entries
-      WHEN (SELECT indexar_contenido FROM items WHERE drive_id=new.container_drive_id)=1 BEGIN
-      INSERT INTO container_entries_fts(rowid,titulo) VALUES(new.id,new.titulo);
-    END;
-    CREATE TRIGGER container_entries_ad AFTER DELETE ON container_entries
-      WHEN (SELECT indexar_contenido FROM items WHERE drive_id=old.container_drive_id)=1 BEGIN
-      INSERT INTO container_entries_fts(container_entries_fts,rowid,titulo) VALUES('delete',old.id,old.titulo);
-    END;
-    CREATE TRIGGER container_entries_au AFTER UPDATE OF titulo ON container_entries
-      WHEN (SELECT indexar_contenido FROM items WHERE drive_id=old.container_drive_id)=1 BEGIN
-      INSERT INTO container_entries_fts(container_entries_fts,rowid,titulo) VALUES('delete',old.id,old.titulo);
-      INSERT INTO container_entries_fts(rowid,titulo) VALUES(new.id,new.titulo);
-    END;
+    DROP TABLE IF EXISTS container_entries_fts;
     CREATE TABLE IF NOT EXISTS configuracion(clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
     CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(titulo,autor,etiquetas,notas,categoria_macro,subcategoria,content='items',content_rowid='id',tokenize='unicode61 remove_diacritics 2');
     CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
@@ -93,6 +80,10 @@ def conectar(path=None):
         ('search_override','INTEGER NOT NULL DEFAULT -1'),
         ('recent_hidden','INTEGER NOT NULL DEFAULT 0')):
         if column not in columns: db.execute('ALTER TABLE items ADD COLUMN '+column+' '+definition)
+    db.execute('CREATE INDEX IF NOT EXISTS idx_items_scope ON items(perfil_drive,disponible,container_parent,oculto)')
+    db.execute('CREATE INDEX IF NOT EXISTS idx_items_history ON items(perfil_drive,recent_hidden,ultimo_acceso DESC)')
+    db.execute("CREATE INDEX IF NOT EXISTS idx_items_etiquetas_partial ON items(perfil_drive,disponible,oculto) WHERE etiquetas != ''")
+    db.execute('CREATE INDEX IF NOT EXISTS idx_items_parent ON items(container_parent,disponible)')
     missing=db.execute("SELECT id,tipo,ruta_relativa FROM items WHERE tipo_contenido='' OR (formato='' AND tipo!='curso')").fetchall()
     if missing:
         def content_type(row):
