@@ -78,5 +78,14 @@ class ItemsManager:
         send2trash(str(path))
         with self.db:
             self.db.execute('DELETE FROM container_entries WHERE container_drive_id=?',(drive_id,))
-            self.db.execute('DELETE FROM items WHERE drive_id=?',(drive_id,))
+            if item['tipo']=='pdf':
+                self.db.execute('DELETE FROM container_entries WHERE drive_id=?',(drive_id,))
+                self.db.execute('UPDATE items SET disponible=0 WHERE drive_id=?',(drive_id,))
+                self.db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
+                    VALUES(?,?,'__removed__',?) ON CONFLICT(drive_id) DO UPDATE SET
+                    expected_relative=excluded.expected_relative,container_drive_id='__removed__',
+                    perfil_drive=excluded.perfil_drive,created_at=CURRENT_TIMESTAMP''',
+                    (drive_id,item['ruta_relativa'],item['perfil_drive']))
+            else:
+                self.db.execute('DELETE FROM items WHERE drive_id=?',(drive_id,))
         return True

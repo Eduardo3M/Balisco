@@ -186,14 +186,18 @@ class DesktopAPI:
                         db.execute('DELETE FROM container_entries WHERE container_drive_id=?',(drive_id,))
                         db.execute('DELETE FROM items WHERE drive_id=?',(drive_id,))
                 else:
-                    row=db.execute('SELECT drive_id FROM items WHERE ruta_relativa=? AND perfil_drive=?',(relative,profile)).fetchone()
+                    row=db.execute('''SELECT drive_id,tipo FROM items WHERE ruta_relativa=? AND perfil_drive=?
+                        AND disponible=1 ORDER BY id DESC LIMIT 1''',(relative,profile)).fetchone()
                     drive_id=job.get('drive_id') or (row['drive_id'] if row else None)
                     if drive_id:
                         db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
-                            VALUES(?,'','__removed__',?) ON CONFLICT(drive_id) DO UPDATE SET
-                            expected_relative='',container_drive_id='__removed__',created_at=CURRENT_TIMESTAMP''',(drive_id,profile))
-                        db.execute('DELETE FROM items WHERE drive_id=?',(drive_id,))
-                    db.execute('DELETE FROM items WHERE ruta_relativa=? AND perfil_drive=?',(relative,profile))
+                            VALUES(?,?,'__removed__',?) ON CONFLICT(drive_id) DO UPDATE SET
+                            expected_relative=excluded.expected_relative,container_drive_id='__removed__',
+                            created_at=CURRENT_TIMESTAMP''',(drive_id,relative,profile))
+                        if row and row['tipo']=='pdf':
+                            db.execute('UPDATE items SET disponible=0 WHERE drive_id=?',(drive_id,))
+                        else:
+                            db.execute('DELETE FROM items WHERE drive_id=?',(drive_id,))
         with self._lock:self._containers.clear();self._container_cache_info.clear()
         return 'La copia de esta operación se eliminó de la unidad local de Drive; DriveFS propagará el borrado a Google Drive.'
     def _set_import_phase(self,ident,phase,detail=None):

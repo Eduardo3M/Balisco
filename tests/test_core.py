@@ -4,7 +4,8 @@ import sqlite3
 import tempfile
 import unittest
 import zipfile
-from core.database import conectar
+from unittest.mock import patch
+from core.database import conectar, configurar
 from core.drive_sync import DriveSync, extraer_ids_proto, conectar_db_drive_ro
 from core.items_manager import ItemsManager
 from core.search_parser import agregar_filtro, limpiar_todos_filtros, buscar, buscar_global
@@ -61,6 +62,147 @@ class CoreTests(unittest.TestCase):
         self.run_sync(); item=self.manager.obtener('drive_id_004')
         self.assertEqual(item['titulo'],'Mi Roma'); self.assertEqual(item['rating'],5)
         self.assertIn('Roma nueva.pdf',item['ruta_relativa']); self.assertEqual(item['notas'],'Mi apunte único')
+    def test_reuploaded_pdf_at_same_path_keeps_library_identity(self):
+        old_id,new_id='drive_id_004','drive_id_012'
+        original=self.manager.obtener(old_id)
+        self.manager.actualizar_notas(old_id,'Notas que deben continuar')
+        self.manager.cambiar_rating(old_id,4)
+        self.manager.cambiar_titulo(old_id,'Roma anotada')
+        self.manager.cambiar_favorito(old_id,1)
+        TagsManager(self.db).actualizar_etiquetas_item(old_id,'+historia')
+        covers=self.root/'portadas';covers.mkdir()
+        (covers/(old_id+'.jpg')).write_bytes(b'portada')
+        source=sqlite3.connect(self.source)
+        source.execute('UPDATE items SET trashed=1 WHERE stable_id=4')
+        source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                       (12,'Roma.pdf',0,'application/pdf',250,0,proto(new_id)))
+        source.execute('INSERT INTO stable_parents VALUES(?,?)',(12,3))
+        source.commit();source.close()
+        self.run_sync()
+        item=self.manager.obtener(new_id)
+        self.assertEqual((item['id'],item['notas'],item['rating'],item['titulo'],item['es_favorito'],item['etiquetas'],item['tamano_bytes']),
+                         (original['id'],'Notas que deben continuar',4,'Roma anotada',1,'+historia',250))
+        self.assertEqual((covers/(new_id+'.jpg')).read_bytes(),b'portada')
+        with self.assertRaises(KeyError):self.manager.obtener(old_id)
+        self.run_sync()
+        self.assertEqual(self.manager.obtener(new_id)['id'],original['id'])
+    def test_relink_does_not_guess_when_old_or_new_paths_are_ambiguous(self):
+        old_id='drive_id_004'
+        self.manager.actualizar_notas(old_id,'No copiar a un archivo ambiguo')
+        with self.db:
+            self.db.execute('''INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive,disponible,notas)
+                VALUES('drive_old_copy','Roma','pdf',?,'fixture',0,'Otra tarjeta')''',
+                (self.manager.obtener(old_id)['ruta_relativa'],))
+        source=sqlite3.connect(self.source)
+        source.execute('UPDATE items SET trashed=1 WHERE stable_id=4')
+        source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                       (12,'Roma.pdf',0,'application/pdf',100,0,proto('drive_id_012')))
+        source.execute('INSERT INTO stable_parents VALUES(?,?)',(12,3))
+        source.commit();source.close()
+        self.run_sync()
+        self.assertEqual(self.manager.obtener('drive_id_012')['notas'],'')
+        self.assertEqual(self.manager.obtener(old_id)['notas'],'No copiar a un archivo ambiguo')
+    def test_same_name_does_not_relink_while_original_still_exists(self):
+        self.manager.actualizar_notas('drive_id_004','Solo el original')
+        source=sqlite3.connect(self.source)
+        source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                       (12,'Roma.pdf',0,'application/pdf',100,0,proto('drive_id_012')))
+        source.execute('INSERT INTO stable_parents VALUES(?,?)',(12,3))
+        source.commit();source.close()
+        self.run_sync()
+        self.assertEqual(self.manager.obtener('drive_id_004')['notas'],'Solo el original')
+        self.assertEqual(self.manager.obtener('drive_id_012')['notas'],'')
+    def test_relink_waits_for_vanished_old_id_then_merges_new_row(self):
+        old_id,new_id='drive_id_004','drive_id_012'
+        original=self.manager.obtener(old_id)
+        self.manager.actualizar_notas(old_id,'Vuelve cuando el anterior desaparezca')
+        source=sqlite3.connect(self.source)
+        source.execute('UPDATE stable_parents SET parent_stable_id=1 WHERE item_stable_id=4')
+        source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                       (12,'Roma.pdf',0,'application/pdf',250,0,proto(new_id)))
+        source.execute('INSERT INTO stable_parents VALUES(?,?)',(12,3))
+        source.commit();source.close()
+        self.run_sync()
+        self.assertEqual(self.manager.obtener(new_id)['notas'],'')
+        self.assertEqual(self.manager.obtener(old_id)['notas'],'Vuelve cuando el anterior desaparezca')
+        source=sqlite3.connect(self.source)
+        source.execute('UPDATE items SET trashed=1 WHERE stable_id=4')
+        source.commit();source.close()
+        self.run_sync()
+        self.assertEqual(self.manager.obtener(new_id)['id'],original['id'])
+        self.assertEqual(self.manager.obtener(new_id)['notas'],'Vuelve cuando el anterior desaparezca')
+        with self.assertRaises(KeyError):self.manager.obtener(old_id)
+    def test_two_new_pdfs_at_same_path_do_not_relink(self):
+        self.manager.actualizar_notas('drive_id_004','No asignar a dos candidatos')
+        source=sqlite3.connect(self.source)
+        source.execute('UPDATE items SET trashed=1 WHERE stable_id=4')
+        for stable_id in (12,13):
+            source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                           (stable_id,'Roma.pdf',0,'application/pdf',100,0,proto('drive_id_'+str(stable_id).zfill(3))))
+            source.execute('INSERT INTO stable_parents VALUES(?,?)',(stable_id,3))
+        source.commit();source.close()
+        self.run_sync()
+        self.assertEqual(self.manager.obtener('drive_id_012')['notas'],'')
+        self.assertEqual(self.manager.obtener('drive_id_013')['notas'],'')
+        self.assertEqual(self.manager.obtener('drive_id_004')['notas'],'No asignar a dos candidatos')
+    def test_reuploaded_pdf_inside_container_keeps_parent_and_properties(self):
+        source=sqlite3.connect(self.source)
+        source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                       (12,'Lección.pdf',0,'application/pdf',100,0,proto('drive_id_012')))
+        source.execute('INSERT INTO stable_parents VALUES(?,?)',(12,7))
+        source.commit();source.close()
+        self.run_sync()
+        original=self.manager.obtener('drive_id_012')
+        self.manager.actualizar_notas('drive_id_012','Nota del contenedor')
+        source=sqlite3.connect(self.source)
+        source.execute('UPDATE items SET trashed=1 WHERE stable_id=12')
+        source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                       (13,'Lección.pdf',0,'application/pdf',120,0,proto('drive_id_013')))
+        source.execute('INSERT INTO stable_parents VALUES(?,?)',(13,7))
+        source.commit();source.close()
+        self.run_sync()
+        item=self.manager.obtener('drive_id_013')
+        self.assertEqual((item['id'],item['notas'],item['container_parent']),
+                         (original['id'],'Nota del contenedor','drive_id_007'))
+        self.assertEqual(self.db.execute('SELECT container_drive_id FROM container_entries WHERE drive_id=?',
+                                         ('drive_id_013',)).fetchone()[0],'drive_id_007')
+        self.assertIsNone(self.db.execute('SELECT 1 FROM container_entries WHERE drive_id=?',
+                                          ('drive_id_012',)).fetchone())
+    def test_deleted_pdf_keeps_hidden_metadata_for_later_upload(self):
+        from pathlib import PureWindowsPath
+        item=self.manager.obtener('drive_id_004')
+        path=self.root.joinpath(*PureWindowsPath(item['ruta_relativa']).parts)
+        path.parent.mkdir(parents=True);path.write_bytes(b'pdf')
+        with self.db:configurar(self.db,'unidad_drive:fixture',str(self.root))
+        self.manager.actualizar_notas(item['drive_id'],'Recuperar al subir otra copia')
+        with patch('send2trash.send2trash'):
+            self.manager.eliminar_item(item['drive_id'])
+        self.assertEqual(self.manager.obtener(item['drive_id'])['disponible'],0)
+        self.assertEqual(self.manager.obtener(item['drive_id'])['notas'],'Recuperar al subir otra copia')
+        pending=self.db.execute('SELECT expected_relative,container_drive_id FROM pending_container_moves WHERE drive_id=?',
+                                (item['drive_id'],)).fetchone()
+        self.assertEqual(tuple(pending),(item['ruta_relativa'],'__removed__'))
+        source=sqlite3.connect(self.source)
+        source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',
+                       (12,'Roma.pdf',0,'application/pdf',100,0,proto('drive_id_012')))
+        source.execute('INSERT INTO stable_parents VALUES(?,?)',(12,3))
+        source.commit();source.close()
+        self.run_sync()
+        self.assertEqual(self.manager.obtener('drive_id_012')['notas'],'Recuperar al subir otra copia')
+    def test_recreated_pdf_with_same_drive_id_reappears_after_app_delete(self):
+        from pathlib import PureWindowsPath
+        item=self.manager.obtener('drive_id_004')
+        path=self.root.joinpath(*PureWindowsPath(item['ruta_relativa']).parts)
+        path.parent.mkdir(parents=True);path.write_bytes(b'pdf')
+        with self.db:configurar(self.db,'unidad_drive:fixture',str(self.root))
+        self.manager.actualizar_notas(item['drive_id'],'Conservar con el mismo ID')
+        with patch('send2trash.send2trash'):
+            self.manager.eliminar_item(item['drive_id'])
+        self.run_sync()
+        self.assertEqual(self.manager.obtener(item['drive_id'])['disponible'],1)
+        self.assertEqual(self.manager.obtener(item['drive_id'])['notas'],'Conservar con el mismo ID')
+        self.assertIsNone(self.db.execute('SELECT 1 FROM pending_container_moves WHERE drive_id=?',
+                                          (item['drive_id'],)).fetchone())
     def test_repeat_sync_does_not_rewrite_unchanged_items(self):
         with self.db:
             self.db.execute('CREATE TABLE sync_audit(id TEXT)')

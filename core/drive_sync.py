@@ -1,7 +1,9 @@
 """Lectura de metadatos DriveFS. Nunca abre contenido de la unidad montada."""
 import ctypes
 import json
+import logging
 import os
+import shutil
 from pathlib import Path, PureWindowsPath
 import re
 import sqlite3
@@ -135,6 +137,55 @@ def classify_file(name, allow_other=False):
 
 class DriveSync:
     def __init__(self,db): self.db=db
+    def _local_file_exists(self,perfil,relative):
+        path=PureWindowsPath(relative)
+        if not relative or path.is_absolute() or path.drive or '..' in path.parts:
+            return False
+        root=preferencia(self.db,'unidad_drive:'+perfil)
+        if not root:
+            try: root=obtener_letra_drive()
+            except (FileNotFoundError,SeleccionRequerida): return False
+        return Path(root).joinpath(*path.parts).is_file()
+
+    def _pdf_replacements(self, rows, perfil, meta):
+        """Match one vanished PDF to one new ID at the exact same DriveFS path."""
+        incoming_ids={row[0] for row in rows}
+        known={item['drive_id']:item for item in self.db.execute('''SELECT drive_id,perfil_drive,tipo,
+            notas,descripcion,etiquetas,rating,es_favorito,titulo_personalizado,fijado,
+            indexar_contenido,oculto,ultimo_acceso,recent_hidden,estado_lectura,search_override FROM items''')}
+        removed={row['drive_id'] for row in self.db.execute('''SELECT drive_id FROM pending_container_moves
+            WHERE perfil_drive=? AND container_drive_id='__removed__' ''',(perfil,))}
+        old_by_path={}
+        for item in self.db.execute('SELECT id,drive_id,ruta_relativa,tipo FROM items WHERE perfil_drive=? AND tipo=?',(perfil,'pdf')):
+            if item['drive_id'] not in incoming_ids:
+                old_by_path.setdefault(item['ruta_relativa'],[]).append(item)
+        new_by_path={}
+        for row in rows:
+            existing=known.get(row[0])
+            pristine=not existing or (existing['perfil_drive']==perfil and existing['tipo']=='pdf' and
+                not any((existing['notas'],existing['descripcion'],existing['etiquetas'],existing['rating'],
+                         existing['es_favorito'],existing['titulo_personalizado'],existing['fijado'],
+                         existing['indexar_contenido'],existing['oculto'],existing['ultimo_acceso'],
+                         existing['recent_hidden'])) and existing['estado_lectura']=='pendiente' and
+                existing['search_override']==-1)
+            if row[3]=='pdf' and pristine:
+                new_by_path.setdefault(row[6],[]).append(row)
+        candidates=[(old_by_path[path][0], new_rows[0])
+                    for path,new_rows in new_by_path.items()
+                    if len(new_rows)==1 and len(old_by_path.get(path,()))==1]
+        unresolved={old['drive_id'] for old,_ in candidates if old['drive_id'] not in removed}
+        live_ids=set()
+        if unresolved:
+            for node in meta.nodes.values():
+                if not unresolved: break
+                if node['trashed'] or node.get('is_tombstone'): continue
+                try: ident=extraer_ids_proto(node['proto'])[0]
+                except (ValueError,UnicodeError): continue
+                if ident in unresolved:
+                    unresolved.remove(ident)
+                    live_ids.add(ident)
+        return [(old,new) for old,new in candidates if old['drive_id'] not in live_ids]
+
     def sincronizar_biblioteca(self,ruta_raiz='Biblioteca',ruta_db=None,perfil=None,cancel_check=None):
         check_cancelled=cancel_check or (lambda:None)
         check_cancelled()
@@ -262,6 +313,10 @@ class DriveSync:
             ident=move['drive_id']; expected=move['expected_relative']; target=move['container_drive_id']
             if (target=='__removed__' and ident not in observed) or (target!='__removed__' and observed.get(ident,'').casefold()==expected.casefold()):
                 resolved.append(ident); continue
+            if (target=='__removed__' and expected and observed.get(ident)==expected and
+                sum(path==expected for path in observed.values())==1 and
+                self._local_file_exists(perfil,expected)):
+                resolved.append(ident); continue
             rows=[row for row in rows if row[0]!=ident]
             entries=[entry for entry in entries if entry[1]!=ident]
             if target=='__removed__':
@@ -274,10 +329,21 @@ class DriveSync:
                     ruta_portada,tamano_bytes,mime_type,perfil_drive,tipo_contenido,formato FROM items WHERE drive_id=?''',(ident,)).fetchone()
                 if old: rows.append(tuple(old))
         check_cancelled()
+        replacements=[] if skipped else self._pdf_replacements(rows,perfil,meta)
         with self.db:
             check_cancelled()
             self.db.execute("DELETE FROM pending_container_moves WHERE perfil_drive=? AND created_at<datetime('now','-1 day')",(perfil,))
             self.db.executemany('DELETE FROM pending_container_moves WHERE drive_id=?',[(ident,) for ident in resolved])
+            for old,new in replacements:
+                self.db.execute('DELETE FROM container_entries WHERE drive_id=? AND perfil_drive=?',
+                                (new[0],perfil))
+                self.db.execute('DELETE FROM items WHERE drive_id=? AND perfil_drive=?',
+                                (new[0],perfil))
+                self.db.execute('UPDATE items SET drive_id=?,ruta_portada=? WHERE id=?',
+                                (new[0],new[7],old['id']))
+                self.db.execute('UPDATE container_entries SET drive_id=? WHERE drive_id=? AND perfil_drive=?',
+                                (new[0],old['drive_id'],perfil))
+                self.db.execute('DELETE FROM pending_container_moves WHERE drive_id=?',(old['drive_id'],))
             if not skipped:
                 self.db.execute('CREATE TEMP TABLE IF NOT EXISTS sync_items_seen(drive_id TEXT PRIMARY KEY) WITHOUT ROWID')
                 self.db.execute('DELETE FROM sync_items_seen')
@@ -324,7 +390,17 @@ class DriveSync:
                 container_entries.perfil_drive IS NOT excluded.perfil_drive''',entries)
             check_cancelled()
             configurar(self.db,'id_perfil_drive',perfil)
-        return dict(indexados=len(rows),omitidos_proto=skipped,perfil=perfil)
+        if replacements:
+            db_file=self.db.execute('PRAGMA database_list').fetchone()[2]
+            if db_file:
+                covers=Path(db_file).parent/'portadas'
+                for old,new in replacements:
+                    source=covers/(old['drive_id']+'.jpg')
+                    target=covers/(new[0]+'.jpg')
+                    if source.is_file() and not source.is_symlink() and not target.exists():
+                        try: shutil.copy2(source,target)
+                        except OSError: logging.getLogger(__name__).exception('No se pudo conservar la portada de %s',old['drive_id'])
+        return dict(indexados=len(rows),omitidos_proto=skipped,perfil=perfil,revinculados=len(replacements))
     def exportar_libros(self,destino):
         rows=[dict(r) for r in self.db.execute("SELECT drive_id,titulo,ruta_relativa FROM items WHERE tipo='pdf' AND disponible=1 AND perfil_drive=?",(preferencia(self.db,'id_perfil_drive',''),))]
         Path(destino).write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')

@@ -6,7 +6,8 @@ Balisco es una aplicación de escritorio de alto rendimiento diseñada para inde
 
 ## Características Principales
 
-* **Indexación Instantánea sin descargas (0 MB):** Lee metadatos directamente de la base local de Google DriveFS (`metadata_sqlite_db`) con identificadores inmutables `drive_id`.
+* **Indexación Instantánea sin descargas (0 MB):** Lee metadatos directamente de la base local de Google DriveFS (`metadata_sqlite_db`) y usa el `drive_id` de cada archivo.
+* **Recuperación de metadatos de PDF:** Si un PDF vuelve con otro ID en la misma ruta del mismo perfil, Balisco conserva su ficha, notas, etiquetas y portada cuando existe una sola correspondencia posible. Si hay varios candidatos, mantiene las fichas separadas para evitar asociaciones erróneas. Una nueva versión con el mismo ID conserva la ficha normalmente.
 * **Contenedores:** Cada carpeta inmediata de `Biblioteca/Containers/` ocupa una sola tarjeta. Sus archivos se muestran como recursos al abrirla. La búsqueda profunda está apagada por defecto; al activarla, sus títulos internos se buscan globalmente a través de la tarjeta del contenedor.
 * **Limpieza Estética Automática:** Elimina extensiones (`.pdf`, `.epub`), hashes MD5, identificadores web (`Anna's Archive`, `libgen`, `z-lib`) y extrae automáticamente los autores a los metadatos.
 * **Búsqueda FTS5 en Tiempo Real:** Búsqueda instantánea con filtros acumulativos (`+etiqueta`, `-excluir`, `@estado`, `@tipo:pdf/contenedor/video`, `@rating:1-5`).
