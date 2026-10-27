@@ -111,7 +111,6 @@ def collect_batch(db, profile, data_dir):
                 raise ValueError('El lote contiene un ID ajeno al perfil activo')
         for entry in files:
             target=covers/entry.filename
-            if target.exists():continue
             raw=batch.read(entry)
             with Image.open(BytesIO(raw)) as image:
                 if image.format!='JPEG' or image.width*image.height>30_000_000:
