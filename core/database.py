@@ -1,15 +1,32 @@
 from pathlib import Path, PureWindowsPath
 import os
 import sqlite3
+import unicodedata
+import re
 
 DATA_DIR = Path(os.environ.get("BALISCO_DATA_DIR", str(Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Balisco")))
 STATES = ("pendiente", "interesado", "leyendo", "leido", "abandonado")
+
+def normalize_tag(text):
+    if not text:
+        return ''
+    norm = ''.join(c for c in unicodedata.normalize('NFKD', str(text)) if not unicodedata.combining(c))
+    return norm.replace('_', '-').casefold()
+
+def normalize_search(text):
+    if not text:
+        return ''
+    norm = ''.join(c for c in unicodedata.normalize('NFKD', str(text)) if not unicodedata.combining(c))
+    norm = re.sub(r'[-_\s]+', ' ', norm)
+    return norm.strip().casefold()
 
 def conectar(path=None):
     path = Path(path) if path else DATA_DIR / "biblioteca.db"
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, timeout=10)
     db.create_function('unicode_casefold',1,lambda value: str(value or '').casefold(),deterministic=True)
+    db.create_function('normalize_tag',1,normalize_tag,deterministic=True)
+    db.create_function('normalize_search',1,normalize_search,deterministic=True)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA encoding='UTF-8'")
     db.execute("PRAGMA journal_mode=WAL")
@@ -18,6 +35,7 @@ def conectar(path=None):
     CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT, drive_id TEXT NOT NULL UNIQUE,
       titulo TEXT NOT NULL, autor TEXT NOT NULL DEFAULT '',
+      idioma TEXT NOT NULL DEFAULT '',
       tipo TEXT NOT NULL CHECK(tipo IN ('pdf','curso','video','audio','imagen','archivo')),
       tipo_contenido TEXT NOT NULL DEFAULT '', formato TEXT NOT NULL DEFAULT '',
       categoria_macro TEXT DEFAULT 'General', subcategoria TEXT DEFAULT '',
@@ -66,6 +84,9 @@ def conectar(path=None):
     END;
     """)
     columns={row[1] for row in db.execute('PRAGMA table_info(items)')}
+    if 'idioma' not in columns:
+        db.execute("ALTER TABLE items ADD COLUMN idioma TEXT NOT NULL DEFAULT ''")
+    db.execute("INSERT OR IGNORE INTO configuracion(clave, valor) VALUES ('idiomas', '[\"Español\", \"Inglés\"]')")
     if 'indexar_contenido' not in columns:
         db.execute('ALTER TABLE items ADD COLUMN indexar_contenido INTEGER NOT NULL DEFAULT 0 CHECK(indexar_contenido IN (0,1))')
     if 'oculto' not in columns:

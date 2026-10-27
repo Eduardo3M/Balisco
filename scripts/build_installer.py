@@ -1,11 +1,14 @@
 """Build the Windows installer: python scripts/build_installer.py."""
 import argparse
+from contextlib import closing
 import importlib.util
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,9 +53,22 @@ def main():
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
                     '--distpath', str(ROOT/'build'/'app'), '--workpath', str(ROOT/'build'/'pyinstaller'),
                     str(ROOT/'Balisco.spec')], cwd=ROOT, check=True)
+    bundle = ROOT/'build'/'app'/'Balisco'
+    for name in ('index.html', 'bootstrap.js', 'app.js', 'styles.css'):
+        if not (bundle/'_internal'/'ui'/name).is_file():
+            raise RuntimeError(f'Falta un archivo de interfaz en el paquete: {name}')
+    with tempfile.TemporaryDirectory(prefix='balisco-build-check-') as data_dir:
+        smoke_env = os.environ.copy()
+        smoke_env['BALISCO_DATA_DIR'] = data_dir
+        subprocess.run([str(bundle/'Balisco.exe'), '--buscar', 'balisco-build-check'],
+                       env=smoke_env, cwd=bundle, check=True, timeout=30,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        with closing(sqlite3.connect(Path(data_dir)/'biblioteca.db')) as database:
+            if database.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+                raise RuntimeError('La base del paquete no pasó la comprobación de integridad.')
     subprocess.run([compiler, '/Qp', f'/DAppVersion={version}', str(ROOT/'scripts'/'Balisco.iss')],
                    cwd=ROOT, check=True)
-    output = ROOT/'dist'/'BaliscoSetup.exe'
+    output = ROOT/'dist'/f'BaliscoSetup-{version}-win-x64.exe'
     if not output.is_file():
         raise RuntimeError('Inno Setup no generó el instalador esperado.')
     clean(ROOT/'build')

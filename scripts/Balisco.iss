@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.1.9"
 #endif
 
 [Setup]
@@ -13,7 +13,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 DisableProgramGroupPage=yes
 OutputDir=..\dist
-OutputBaseFilename=BaliscoSetup
+OutputBaseFilename=BaliscoSetup-{#AppVersion}-win-x64
 SetupIconFile=..\ui\Logo.ico
 UninstallDisplayIcon={app}\Balisco.exe
 Compression=lzma2

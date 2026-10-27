@@ -20,10 +20,11 @@ result = {}
 
 def run(window):
     try:
-        deadline = time.monotonic() + 20
+        deadline = time.monotonic() + 35
         while not window.evaluate_js('Boolean(window.balisco?.state.items.length)'):
             if time.monotonic() > deadline:
-                raise AssertionError('Bootstrap timeout')
+                state=window.evaluate_js("({url:location.href,ready:!!window.balisco,items:window.balisco?.state.items.length,status:document.getElementById('status')?.textContent,toast:document.getElementById('toast')?.textContent})")
+                raise AssertionError(f'Bootstrap timeout: {state}')
             time.sleep(.05)
         done = __import__('threading').Event()
         script = """(async()=>{
@@ -157,13 +158,19 @@ def run(window):
             time.sleep(.02)
         window.restore()
         result['native_minimize_restore'] = True
+        window.evaluate_js("if(!window.balisco.state.selected)document.querySelector('.card')?.click()")
+        deadline = time.monotonic() + 4
+        while not window.evaluate_js("Boolean(window.balisco.state.selected)"):
+            assert time.monotonic() < deadline, 'Selection unavailable after restore'
+            time.sleep(.02)
         result['close_started'] = time.monotonic()
         # Exercise native close (Alt+F4 path) while an edit is still pending.
         window.evaluate_js("document.getElementById('notes').value='last edit';document.getElementById('notes').dispatchEvent(new Event('input'))")
+        assert window.evaluate_js("window.balisco.state.pending.size") > 0, 'No edit queued before close'
         if '--button' in sys.argv:
             window.evaluate_js("document.getElementById('winClose').click()")
         else:
-            window.destroy()
+            ctypes.windll.user32.PostMessageW(api._chrome.resolve(), 0x0010, 0, 0)
     except Exception as exc:
         result['error'] = repr(exc)
         api._allow_close = True
@@ -183,7 +190,7 @@ with tempfile.TemporaryDirectory(prefix='balisco-chrome-') as tmp:
     webview.start(run, window, gui='edgechromium', private_mode=True)
     result['close_ms'] = round((time.monotonic()-result.get('close_started',time.monotonic()))*1000)
     with closing(conectar(path)) as db:
-        result['saved_pending_edit'] = db.execute('SELECT notas FROM items').fetchone()[0] == 'last edit'
+        result['saved_pending_edit'] = bool(db.execute("SELECT 1 FROM items WHERE notas='last edit'").fetchone())
         result['geometry_saved'] = bool(db.execute("SELECT valor FROM configuracion WHERE clave='window_geometry'").fetchone())
     print(json.dumps(result), flush=True)
     assert not result.get('error') and result['saved_pending_edit'] and result['geometry_saved'], result

@@ -17,24 +17,27 @@ def run(window):
     try:
         deadline=time.monotonic()+12
         while not window.evaluate_js('Boolean(window.balisco?.state.items.length===2)'):
-            if time.monotonic()>deadline: raise AssertionError('Bootstrap timeout')
+            if time.monotonic()>deadline:
+                state=window.evaluate_js("({url:location.href,ready:!!window.balisco,items:window.balisco?.state.items.length,status:document.getElementById('status')?.textContent,toast:document.getElementById('toast')?.textContent})")
+                raise AssertionError(f'Bootstrap timeout: {state}')
             time.sleep(.05)
         done=threading.Event()
         script=r"""(async()=>{
           const S=window.balisco.state,$=id=>document.getElementById(id);
           const wait=async f=>{const end=performance.now()+5000;while(!f()){if(performance.now()>end)throw Error('Timeout');await new Promise(r=>setTimeout(r,25));}};
-          $('authors').click();await wait(()=>S.view==='authors'&&$('authorsView').textContent.includes('Ana Torres'));
-          $('authorsView').querySelector('[data-author]').click();await wait(()=>S.view==='grid'&&S.items.length===1);
+          $('metadata').click();await wait(()=>S.view==='metadata');
+          $('metadataView').querySelector('[data-meta-tab="author"]').click();await wait(()=>$('metadataItems').textContent.includes('Ana Torres'));
+          $('metadataItems').querySelector('[data-meta-open="Ana Torres"]').click();await wait(()=>S.view==='grid'&&S.items.length===1);
           document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(()=>S.items.length===2);
-          $('bulk').click();await wait(()=>S.bulkMode&&S.items.length===2);
-          document.querySelectorAll('.card').forEach(card=>card.click());await wait(()=>S.bulkIds.size===2&&S.selected);
+          await wait(()=>document.querySelectorAll('.card').length===2);
+          const cards=[...document.querySelectorAll('.card')];cards[0].click();await wait(()=>S.bulkIds.size===1);
+          cards[1].dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}));await wait(()=>S.bulkIds.size===2&&S.selected);
           $('addAuthor').click();$('authorInput').value='María Sol';$('authorForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
           await wait(()=>S.selected.autor.includes('María Sol'));
           $('addTag').click();$('tagInput').value='arte';$('tagForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
           await wait(()=>S.selected.etiquetas.includes('+arte'));
           const ids=[...S.bulkIds],details=await Promise.all(ids.map(async id=>(await pywebview.api.call('detail',{id})).data));
           if(!details.every(item=>item.autor.includes('María Sol')&&item.etiquetas.includes('+arte')))throw Error('Bulk metadata missing');
-          $('bulk').click();await wait(()=>!S.bulkMode&&S.bulkIds.size===0);
           return {ok:true,authors:details.length};
         })().catch(e=>({ok:false,error:e.message,stack:e.stack}))"""
         window.evaluate_js(script,callback=lambda value:(result.update(value),done.set()))

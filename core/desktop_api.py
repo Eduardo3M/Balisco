@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 import webbrowser
-from .database import DATA_DIR, conectar, configurar, preferencia
+from .database import DATA_DIR, conectar, configurar, preferencia, normalize_tag, normalize_search
 from .items_manager import ItemsManager
 from .tags_manager import TagsManager, obtener_etiquetas_ordenadas_frecuencia, obtener_sugerencias_etiquetas
 from .search_parser import agregar_filtro, limpiar_todos_filtros, construir_query_sql, internal_searchable
@@ -78,6 +78,8 @@ class DesktopAPI:
     def _connect(self):
         db=sqlite3.connect(self._dbpath,timeout=10)
         db.create_function('unicode_casefold',1,lambda value: str(value or '').casefold(),deterministic=True)
+        db.create_function('normalize_tag',1,normalize_tag,deterministic=True)
+        db.create_function('normalize_search',1,normalize_search,deterministic=True)
         db.row_factory=sqlite3.Row
         return db
     WINDOW_ACTIONS = frozenset({'close', 'window_minimize', 'window_toggle_maximize',
@@ -303,7 +305,9 @@ class DesktopAPI:
         profile=preferencia(db,'id_perfil_drive','')
         manager=ItemsManager(db)
         if action=='bootstrap':
-            return {'prefs':{r['clave']:r['valor'] for r in db.execute("SELECT * FROM configuracion WHERE clave IN ('tema','zoom','modo','id_perfil_drive','wallpaper','wallpaper_opacity','wallpaper_blur','wallpaper_positions','container_wallpaper','container_background_opacity','container_background_blur','confirm_delete')")},'count':db.execute("SELECT count(*) FROM items WHERE disponible=1 AND oculto=0 AND container_parent='' AND perfil_drive=?",(profile,)).fetchone()[0]}
+            row_langs=db.execute("SELECT valor FROM configuracion WHERE clave='idiomas'").fetchone()
+            languages=json.loads(row_langs['valor']) if row_langs and row_langs['valor'] else ['Español', 'Inglés']
+            return {'prefs':{r['clave']:r['valor'] for r in db.execute("SELECT * FROM configuracion WHERE clave IN ('tema','zoom','modo','id_perfil_drive','wallpaper','wallpaper_opacity','wallpaper_blur','wallpaper_positions','container_wallpaper','container_background_opacity','container_background_blur','confirm_delete','show_recent_titles')")},'languages':languages,'count':db.execute("SELECT count(*) FROM items WHERE disponible=1 AND oculto=0 AND container_parent='' AND perfil_drive=?",(profile,)).fetchone()[0]}
         if action=='undo_delete': return self._undo_deletion(db)
         if action=='ready':
             metrics={'ready_ms':round((time.perf_counter()-self._started)*1000,1),'renderer':'edgechromium','frontend':p}
@@ -313,7 +317,7 @@ class DesktopAPI:
             filters=limpiar_todos_filtros()
             for token in p.get('tokens',[]): filters=agregar_filtro(str(token),filters)
             sql,args=construir_query_sql(filters,profile)
-            sql=sql.replace('SELECT i.*','SELECT i.drive_id,i.titulo,i.autor,i.tipo,i.tipo_contenido,i.formato,i.estado_lectura,i.es_favorito,i.rating,i.tamano_bytes,i.categoria_macro,i.indexar_contenido,i.oculto,i.container_parent,i.fijado,i.search_override,i.ruta_relativa,i.perfil_drive')
+            sql=sql.replace('SELECT i.*','SELECT i.drive_id,i.titulo,i.autor,i.idioma,i.tipo,i.tipo_contenido,i.formato,i.estado_lectura,i.es_favorito,i.rating,i.tamano_bytes,i.categoria_macro,i.indexar_contenido,i.oculto,i.container_parent,i.fijado,i.search_override,i.ruta_relativa,i.perfil_drive')
             items=[dict(r) for r in db.execute(sql,args)]
             if any(p['tipo']=='texto_titulo' for p in filters['pildoras']):
                 cache={}
@@ -341,14 +345,14 @@ class DesktopAPI:
             item=self._item(db,p['id']); item['url']=manager.url(p['id']); return item
         if action=='update':
             self._item(db,p['id'])
-            methods={'titulo':manager.cambiar_titulo,'autor':manager.cambiar_autor,'notas':manager.actualizar_notas,'rating':manager.cambiar_rating,'estado_lectura':manager.cambiar_estado_lectura,'es_favorito':manager.cambiar_favorito,'etiquetas':TagsManager(db).actualizar_etiquetas_item}
+            methods={'titulo':manager.cambiar_titulo,'autor':manager.cambiar_autor,'idioma':manager.cambiar_idioma,'notas':manager.actualizar_notas,'rating':manager.cambiar_rating,'estado_lectura':manager.cambiar_estado_lectura,'es_favorito':manager.cambiar_favorito,'etiquetas':TagsManager(db).actualizar_etiquetas_item}
             if p['field'] not in methods: raise ValueError('Campo no editable')
             methods[p['field']](p['id'],p['value']); return self._item(db,p['id'])
         if action=='selection_properties':
             ids=p.get('ids')
             if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)) or any(not isinstance(ident,str) for ident in ids):
                 raise ValueError('Selección inválida')
-            fields=('fijado','es_favorito','oculto','rating','estado_lectura')
+            fields=('fijado','es_favorito','oculto','rating','estado_lectura','idioma')
             columns=','.join(f'MIN({field}) AS min_{field},MAX({field}) AS max_{field}' for field in fields)
             result={}
             for start in range(0,len(ids),500):
@@ -370,6 +374,7 @@ class DesktopAPI:
             if field in ('es_favorito','fijado','oculto') and type(value) is bool:value=int(value)
             elif field=='rating' and type(value) is int and value in range(6):pass
             elif field=='estado_lectura' and value in ('pendiente','interesado','leyendo','leido','abandonado'):pass
+            elif field=='idioma' and isinstance(value,str):pass
             else:raise ValueError('Cambio masivo inválido')
             items=[self._item(db,ident) for ident in ids]
             with db:db.executemany('UPDATE items SET '+field+'=? WHERE id=?',[(value,item['id']) for item in items])
@@ -482,15 +487,16 @@ class DesktopAPI:
             key,value=p['key'],str(p['value'])
             if key=='tema' and value not in ('auto','dark','light'): raise ValueError('Tema inválido')
             elif key=='modo' and value not in ('local','web'): raise ValueError('Modo inválido')
-            elif key=='zoom' and not 100<=int(value)<=430: raise ValueError('Zoom inválido')
+            elif key=='zoom' and not 60<=int(value)<=430: raise ValueError('Zoom inválido')
             elif key=='wallpaper_opacity' and not 0<=int(value)<=100: raise ValueError('Opacidad inválida')
             elif key=='wallpaper_blur' and not 0<=int(value)<=30: raise ValueError('Desenfoque inválido')
             elif key=='container_background_opacity' and not 0<=int(value)<=100: raise ValueError('Opacidad del fondo de contenedores inválida')
             elif key=='container_background_blur' and not 0<=int(value)<=30: raise ValueError('Desenfoque del fondo de contenedores inválido')
             elif key=='show_overlays' and value not in ('true','false'): raise ValueError('Preferencia inválida')
+            elif key=='show_recent_titles' and value not in ('true','false'): raise ValueError('Preferencia inválida')
             elif key=='confirm_delete' and value not in ('true','false'): raise ValueError('Preferencia inválida')
             elif key=='wallpaper': pass
-            elif key not in ('tema','modo','zoom','wallpaper','wallpaper_opacity','wallpaper_blur','container_wallpaper','container_background_opacity','container_background_blur','confirm_delete'): raise ValueError('Preferencia inválida')
+            elif key not in ('tema','modo','zoom','wallpaper','wallpaper_opacity','wallpaper_blur','container_wallpaper','container_background_opacity','container_background_blur','confirm_delete','show_recent_titles'): raise ValueError('Preferencia inválida')
             with db: configurar(db,key,value)
             return True
         if action=='wallpapers_list':
@@ -625,8 +631,10 @@ class DesktopAPI:
             if path.stat().st_size>8_000_000: return None
             return 'data:image/jpeg;base64,'+base64.b64encode(path.read_bytes()).decode('ascii')
         if action=='save_cover':
-            self._item(db,p['id'])
-            if not ID_PATTERN.fullmatch(p['id']): raise ValueError('ID inválido')
+            ident=p['id']
+            if not ID_PATTERN.fullmatch(ident): raise ValueError('ID inválido')
+            if p.get('container'): self._item(db,p['container'])
+            else: self._item(db,ident)
             if len(p['data'])>12_000_000: raise ValueError('Imagen demasiado grande')
             from PIL import Image, ImageOps
             raw=base64.b64decode(p['data'],validate=True)
@@ -635,9 +643,52 @@ class DesktopAPI:
                 if image.width*image.height>30_000_000: raise ValueError('Imagen demasiado grande')
                 image=ImageOps.exif_transpose(image).convert('RGB'); image.thumbnail((600,800), Image.Resampling.LANCZOS)
                 covers=self._dir/'portadas'; covers.mkdir(exist_ok=True)
-                temp=covers/(p['id']+'.tmp'); image.save(temp,'JPEG',quality=82,optimize=True,progressive=True)
-                os.replace(temp,covers/(p['id']+'.jpg'))
+                temp=covers/(ident+'.tmp'); image.save(temp,'JPEG',quality=82,optimize=True,progressive=True)
+                os.replace(temp,covers/(ident+'.jpg'))
                 self._invalidate_cover_cache()
+            return True
+        if action=='get_languages':
+            row=db.execute("SELECT valor FROM configuracion WHERE clave='idiomas'").fetchone()
+            langs=json.loads(row['valor']) if row and row['valor'] else ['Español', 'Inglés']
+            return {'languages':langs}
+        if action=='add_language':
+            name=str(p.get('name','')).strip()
+            if not name: raise ValueError('El nombre del idioma no puede estar vacío')
+            row=db.execute("SELECT valor FROM configuracion WHERE clave='idiomas'").fetchone()
+            langs=json.loads(row['valor']) if row and row['valor'] else ['Español', 'Inglés']
+            if not any(l.casefold()==name.casefold() for l in langs):
+                langs.append(name)
+                with db: db.execute("INSERT INTO configuracion(clave, valor) VALUES('idiomas', ?) ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor",(json.dumps(langs),))
+            return {'languages':langs}
+        if action=='delete_language':
+            name=str(p.get('name','')).strip()
+            row=db.execute("SELECT valor FROM configuracion WHERE clave='idiomas'").fetchone()
+            langs=json.loads(row['valor']) if row and row['valor'] else ['Español', 'Inglés']
+            langs=[l for l in langs if l.casefold()!=name.casefold()]
+            with db: db.execute("INSERT INTO configuracion(clave, valor) VALUES('idiomas', ?) ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor",(json.dumps(langs),))
+            return {'languages':langs}
+        if action=='delete_cover':
+            ident=p['id']
+            if not ID_PATTERN.fullmatch(ident): raise ValueError('ID inválido')
+            custom=self._dir/'portadas'/(ident+'.jpg')
+            if custom.is_file(): custom.unlink()
+            if p.get('container'):
+                try:
+                    container=self._item(db,p['container'])
+                    record=self._containers.get(p['container'],{}).get(ident)
+                    if record and not record.get('folder'):
+                        from .thumbnailer import thumbnail_name
+                        auto=self._dir/'portadas_auto'/thumbnail_name(container['perfil_drive'],record['path'])
+                        if auto.is_file(): auto.unlink()
+                except Exception: pass
+            else:
+                try:
+                    item=self._item(db,ident)
+                    from .thumbnailer import thumbnail_name
+                    auto=self._dir/'portadas_auto'/thumbnail_name(item['perfil_drive'],item['ruta_relativa'])
+                    if auto.is_file(): auto.unlink()
+                except Exception: pass
+            self._invalidate_cover_cache()
             return True
         if action=='sync':
             with self._sync_lock:result=DriveSync(db).sincronizar_biblioteca(perfil=profile or None)

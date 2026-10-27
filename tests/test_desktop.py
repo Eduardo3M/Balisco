@@ -99,6 +99,7 @@ class DesktopTests(unittest.TestCase):
         ids=['test_drive_001','test_drive_003']
         self.assertEqual(self.call('bulk_metadata',ids=ids,field='autor',operation='add',value='María Sol')['updated'],2)
         self.assertEqual(self.call('bulk_metadata',ids=ids,field='etiquetas',operation='add',value='arte')['updated'],2)
+        self.assertEqual(len(self.call('query',tokens=['@autor:María Sol'])['items']),2)
         self.assertEqual(len(self.call('query',tokens=['autor:María Sol'])['items']),2)
         self.assertTrue(any(a['author']=='María Sol' and a['total']==2 for a in self.call('authors')))
         self.assertIn('Ana Torres',self.call('detail',id=ids[0])['autor'])
@@ -408,11 +409,57 @@ class DesktopTests(unittest.TestCase):
         self.assertIsNone(self.call('get_wallpaper',filename='custom_test.jpg'))
         self.assertFalse(self.api.call('delete_wallpaper',{'filename':'../biblioteca.db'})['ok'])
 
+    def test_cover_save_and_delete(self):
+        buf=BytesIO(); Image.new('RGB',(60,80),(200,100,50)).save(buf,'JPEG')
+        b64=base64.b64encode(buf.getvalue()).decode()
+        self.assertTrue(self.call('save_cover',id='test_drive_001',data=b64))
+        cover_data=self.call('cover',id='test_drive_001')
+        self.assertTrue(cover_data and cover_data.startswith('data:image/jpeg;base64,'))
+        self.assertTrue(self.call('delete_cover',id='test_drive_001'))
+        self.assertIsNone(self.call('cover',id='test_drive_001'))
+
     def test_rating_filter_is_exact(self):
         self.call('update',id='test_drive_001',field='rating',value=5)
         self.assertEqual(len(self.call('query',tokens=['@rating:5'])['items']),1)
         for rating in range(1,5):
             self.assertEqual(self.call('query',tokens=[f'@rating:{rating}'])['items'],[])
+
+    def test_language_management_and_bulk(self):
+        with closing(self.api._connect()) as db:
+            with db:
+                db.execute("INSERT INTO items(drive_id,titulo,tipo,ruta_relativa,perfil_drive) VALUES('test_drive_004','Segundo en perfil','pdf',?, 'test')",(r'Mi unidad\Biblioteca\second_test.pdf',))
+        langs = self.call('get_languages')['languages']
+        self.assertIn('Español', langs)
+        self.assertIn('Inglés', langs)
+        added = self.call('add_language', name='Francés')['languages']
+        self.assertIn('Francés', added)
+        self.call('update', id='test_drive_001', field='idioma', value='Español')
+        self.assertEqual(self.call('detail', id='test_drive_001')['idioma'], 'Español')
+        self.call('bulk_update', ids=['test_drive_001', 'test_drive_004'], field='idioma', value='Inglés')
+        self.assertEqual(self.call('detail', id='test_drive_001')['idioma'], 'Inglés')
+        self.assertEqual(self.call('detail', id='test_drive_004')['idioma'], 'Inglés')
+        props = self.call('selection_properties', ids=['test_drive_001', 'test_drive_004'])
+        self.assertEqual(props['idioma'], 'Inglés')
+        deleted = self.call('delete_language', name='Francés')['languages']
+        self.assertNotIn('Francés', deleted)
+
+    def test_bilingual_and_robust_search(self):
+        self.call('update', id='test_drive_001', field='titulo', value='Calculus Early Transcendentals')
+        self.call('update', id='test_drive_001', field='idioma', value='Inglés')
+        self.call('update', id='test_drive_001', field='etiquetas', value='+diseno-personajes')
+
+        # Bilingual search (calculo / cálculo / calculus)
+        self.assertEqual(self.call('query', tokens=['calculo'])['items'][0]['drive_id'], 'test_drive_001')
+        self.assertEqual(self.call('query', tokens=['cálculo'])['items'][0]['drive_id'], 'test_drive_001')
+        self.assertEqual(self.call('query', tokens=['calculus'])['items'][0]['drive_id'], 'test_drive_001')
+
+        # Robust tag search with underscores and accents
+        self.assertEqual(self.call('query', tokens=['+diseno_personajes'])['items'][0]['drive_id'], 'test_drive_001')
+        self.assertEqual(self.call('query', tokens=['+diseño-personajes'])['items'][0]['drive_id'], 'test_drive_001')
+        self.assertEqual(self.call('query', tokens=['+diseño_personajes'])['items'][0]['drive_id'], 'test_drive_001')
+
+        # Language search filter
+        self.assertEqual(self.call('query', tokens=['@idioma:ingles'])['items'][0]['drive_id'], 'test_drive_001')
 
 class MigrationTests(unittest.TestCase):
     def test_legacy_upgrade_preserves_notes_and_builds_author_index(self):

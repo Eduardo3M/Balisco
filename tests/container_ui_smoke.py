@@ -35,6 +35,14 @@ def run(window):
           if(!inspector.classList.contains('is-compact')||inspector.getBoundingClientRect().width>3||$('viewport').getBoundingClientRect().width-expandedCatalogWidth<expandedWidth-4||!$('details').inert||toggle.getAttribute('aria-expanded')!=='false'||!toggle.classList.contains('is-compact'))throw Error('Library inspector still occupies card space');
           toggle.click();await new Promise(resolve=>setTimeout(resolve,450));
           if(Math.abs(inspector.getBoundingClientRect().width-expandedWidth)>2||$('details').inert||toggle.getAttribute('aria-expanded')!=='true')throw Error('Library inspector did not expand');
+          localStorage.setItem('balisco.recentTags',JSON.stringify({extra:'2026-10-26T10:00:00.000Z',curso:'2026-10-25T10:00:00.000Z'}));
+          $('searchToggle').click();
+          await wait(()=>$('tagSuggestions').querySelectorAll('[data-suggestion]').length===2);
+          if($('ghost').value||$('tagSuggestions').hidden||!$('tagSuggestions').textContent.includes('ETIQUETAS RECIENTES')||$('tagSuggestions').querySelector('[data-suggestion="0"]')?.textContent.trim().startsWith('+extra')!==true)throw Error('Empty search does not recommend recently used tags: '+JSON.stringify({value:$('ghost').value,html:$('tagSuggestions').innerHTML}));
+          $('tagSuggestions').querySelector('[data-suggestion="0"]').click();
+          await wait(()=>window.balisco.state.tokens.includes('+extra'));
+          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+          await wait(()=>window.balisco.state.tokens.length===0);
           pywebview.api.call=async(action,payload)=>{
             if(action==='container_view')return {ok:true,data:{view:'grid'}};
             if(action==='container')return {ok:true,data:[
@@ -99,9 +107,19 @@ def run(window):
           if(inspector.getBoundingClientRect().width>3||!$('courseInspector').inert||!$('details').inert)throw Error('Explorer inspector still occupies card space');
           $('resources').querySelector('[data-folder]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:190,clientY:240}));
           await wait(()=>$('popover').querySelector('[data-item-action="open-panel"]')&&!$('popover').hidden);
+          $('popover').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:2,pointerId:19}));
+          $('popover').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,button:2,clientX:190,clientY:240}));
+          await wait(()=>$('popover').hidden);
+          $('resources').querySelector('[data-folder]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,button:2,clientX:190,clientY:240}));
+          await wait(()=>$('popover').querySelector('[data-item-action="open-panel"]')&&!$('popover').hidden);
           if($('popover').querySelector('[data-item-action="open-panel"]').textContent.trim()!=='Abrir panel lateral')throw Error('Explorer menu does not offer to open the compact inspector');
           $('popover').querySelector('[data-item-action="open-panel"]').click();await new Promise(resolve=>setTimeout(resolve,450));
           if(Math.abs(inspector.getBoundingClientRect().width-expandedWidth)>2||$('courseInspector').inert)throw Error('Explorer inspector did not expand');
+          const selectedFolder=window.balisco.state.courseSelection?.key;
+          inspector.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+          if(window.balisco.state.courseSelection?.key!==selectedFolder)throw Error('Explorer panel click cleared selection');
+          $('courseView').querySelector('.course-bar').dispatchEvent(new MouseEvent('click',{bubbles:true}));
+          if(window.balisco.state.courseSelection)throw Error('Explorer outside click did not clear selection');
           const rect=$('courseView').getBoundingClientRect(),bar=$('courseView').querySelector('.course-bar').getBoundingClientRect();
           if(Math.abs(rect.left-bar.left)>2||Math.abs(rect.right-bar.right)>2)throw Error('Header does not fill explorer width');
           if($('courseView').dataset.layout!=='grid')throw Error('Saved grid view not restored');
@@ -174,6 +192,8 @@ def run(window):
           pywebview.api.call=async(action,payload)=>{if(action==='container_trash'){deleteCalls++;return {ok:true,data:true};}if(action==='undo_delete'){undoCalls++;return {ok:true,data:{restored:true,name:'Leccion.pdf'}};}return previousCall(action,payload);};
           $('searchToggle').click();$('ghost').value='@confirmar:suprimir';$('ghost').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
           await wait(()=>window.balisco.state.confirmDelete===false);
+          $('resources').querySelector('[data-id="fixture_file"]').click();
+          await wait(()=>window.balisco.state.courseSelection?.id==='fixture_file');
           document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Delete',bubbles:true}));
           await wait(()=>deleteCalls===1&&!$('resources').querySelector('[data-id="fixture_file"]'));
           if($('dialog').open)throw Error('Disabled confirmation still opened a dialog');
@@ -252,6 +272,8 @@ if __name__ == '__main__':
             )
             db.execute("UPDATE items SET rating=5,es_favorito=1,estado_lectura='abandonado',fijado=1 WHERE drive_id='fixture_course'")
             db.execute("UPDATE items SET rating=2 WHERE drive_id='fixture_extra'")
+            db.execute("UPDATE items SET etiquetas='+curso' WHERE drive_id='fixture_course'")
+            db.execute("UPDATE items SET etiquetas='+extra' WHERE drive_id='fixture_extra'")
             db.execute("UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP WHERE drive_id IN ('fixture_course','fixture_file','fixture_extra')")
         api = DesktopAPI(temp)
         api._containers['fixture_course'] = {

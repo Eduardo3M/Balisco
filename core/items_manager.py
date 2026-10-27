@@ -47,7 +47,7 @@ class ItemsManager:
         else: subprocess.Popen(['explorer.exe','/select,',str(path)])
         return True
     def _update(self,drive_id,field,value):
-        allowed={'notas','rating','estado_lectura','titulo','autor','es_favorito'}
+        allowed={'notas','rating','estado_lectura','titulo','autor','es_favorito','idioma'}
         if field not in allowed: raise ValueError('Campo no permitido')
         with self.db: return self.db.execute('UPDATE items SET '+field+'=? WHERE drive_id=?',(value,drive_id)).rowcount>0
     def actualizar_notas(self,drive_id,texto_notas):
@@ -71,6 +71,8 @@ class ItemsManager:
     def cambiar_favorito(self,drive_id,favorito):
         if type(favorito) not in (bool,int) or favorito not in (0,1): raise ValueError('Favorito inválido')
         return self._update(drive_id,'es_favorito',int(favorito))
+    def cambiar_idioma(self,drive_id,idioma):
+        return self._update(drive_id,'idioma',str(idioma or '').strip())
     def eliminar_item(self,drive_id):
         from send2trash import send2trash
         item=self.obtener(drive_id); path=self.ruta_local(item)

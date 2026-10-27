@@ -326,6 +326,18 @@ class CoreTests(unittest.TestCase):
         self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_004'])
         f = agregar_filtro('@sin:notas', limpiar_todos_filtros())
         self.assertEqual([r['drive_id'] for r in buscar(self.db, f)], ['drive_id_007'])
+    def test_follow_up_filter_matches_any_personal_signal(self):
+        f = agregar_filtro('@con:seguimiento', limpiar_todos_filtros())
+        self.assertEqual(buscar(self.db, f), [])
+        for field, value in [('es_favorito', 1), ('rating', 3), ('estado_lectura', 'leyendo'), ('notas', 'Recordar')]:
+            with self.db:
+                self.db.execute(f'UPDATE items SET {field}=? WHERE drive_id=?', (value, 'drive_id_004'))
+            self.assertEqual([row['drive_id'] for row in buscar(self.db, f)], ['drive_id_004'])
+            with self.db:
+                self.db.execute(f'UPDATE items SET {field}=? WHERE drive_id=?',
+                                ('pendiente' if field == 'estado_lectura' else '' if field == 'notas' else 0, 'drive_id_004'))
+        self.assertEqual(buscar(self.db, f), [])
+        self.assertEqual(len(agregar_filtro('@con:seguimiento', f)['pildoras']), 1)
     def test_unnamed_course_with_video(self):
         c=sqlite3.connect(self.source); c.execute("UPDATE items SET local_title='Blender 3D' WHERE stable_id=7"); c.commit(); c.close()
         self.run_sync()

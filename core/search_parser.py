@@ -3,11 +3,273 @@ from copy import deepcopy
 from pathlib import PureWindowsPath
 import re
 from uuid import uuid4
-from .database import STATES
+from .database import STATES, normalize_tag, normalize_search
+
+import unicodedata
+
+def strip_accents(s):
+    return ''.join(c for c in unicodedata.normalize('NFKD', str(s)) if not unicodedata.combining(c)).casefold()
+
+BILINGUAL_MAP = {
+    # Math & Exact Sciences
+    'calculo': {'calculus'},
+    'calculus': {'calculo'},
+    'matematica': {'mathematics', 'math'},
+    'matematicas': {'mathematics', 'math', 'maths'},
+    'mathematics': {'matematica', 'matematicas'},
+    'math': {'matematica', 'matematicas'},
+    'maths': {'matematica', 'matematicas'},
+    'algebra': {'algebra', 'algebraic'},
+    'geometria': {'geometry', 'geometric'},
+    'geometry': {'geometria'},
+    'trigonometria': {'trigonometry'},
+    'trigonometry': {'trigonometria'},
+    'estadistica': {'statistics', 'statistical'},
+    'statistics': {'estadistica'},
+    'probabilidad': {'probability', 'probabilistic'},
+    'probability': {'probabilidad'},
+    'fisica': {'physics', 'physical'},
+    'physics': {'fisica'},
+    'quimica': {'chemistry', 'chemical'},
+    'chemistry': {'quimica'},
+    'biologia': {'biology', 'biological'},
+    'biology': {'biologia'},
+    'astronomia': {'astronomy'},
+    'astronomy': {'astronomia'},
+
+    # Technology & Engineering
+    'computacion': {'computing', 'computer', 'computation'},
+    'computer': {'computacion'},
+    'computing': {'computacion'},
+    'informatica': {'computing', 'informatics', 'computer'},
+    'programacion': {'programming', 'coding', 'code'},
+    'programming': {'programacion'},
+    'codigo': {'code'},
+    'code': {'codigo'},
+    'desarrollo': {'development'},
+    'development': {'desarrollo'},
+    'algoritmo': {'algorithm'},
+    'algoritmos': {'algorithms'},
+    'algorithm': {'algoritmo'},
+    'algorithms': {'algoritmos'},
+    'estructura': {'structure'},
+    'estructuras': {'structures'},
+    'structure': {'estructura'},
+    'structures': {'estructuras'},
+    'redes': {'networks', 'networking'},
+    'networks': {'redes'},
+    'red': {'network'},
+    'network': {'red'},
+    'seguridad': {'security'},
+    'security': {'seguridad'},
+    'datos': {'data'},
+    'data': {'datos'},
+    'sistemas': {'systems', 'system'},
+    'systems': {'sistemas'},
+    'system': {'sistema'},
+    'sistema': {'system'},
+    'ingenieria': {'engineering', 'engineer'},
+    'engineering': {'ingenieria'},
+    'mecanica': {'mechanics', 'mechanical'},
+    'mechanics': {'mecanica'},
+    'electronica': {'electronics', 'electronic'},
+    'electronics': {'electronica'},
+    'electrica': {'electrical', 'electric'},
+    'electricidad': {'electricity'},
+    'robotica': {'robotics'},
+    'robotics': {'robotica'},
+    'inteligencia': {'intelligence'},
+    'intelligence': {'inteligencia'},
+    'artificial': {'artificial'},
+
+    # Art, Animation, Design
+    'diseno': {'design', 'designer'},
+    'design': {'diseno'},
+    'arte': {'art', 'artist'},
+    'art': {'arte'},
+    'artistico': {'artistic'},
+    'artistic': {'artistico'},
+    'dibujo': {'drawing', 'sketch'},
+    'drawing': {'dibujo'},
+    'pintura': {'painting', 'paint'},
+    'painting': {'pintura'},
+    'animacion': {'animation'},
+    'animation': {'animacion'},
+    'personaje': {'character'},
+    'personajes': {'characters'},
+    'character': {'personaje'},
+    'characters': {'personajes'},
+    'modelado': {'modeling', 'modelling'},
+    'modeling': {'modelado'},
+    'render': {'render', 'rendering'},
+    'renderizado': {'rendering'},
+    'rendering': {'render', 'renderizado'},
+    'fotografia': {'photography', 'photo'},
+    'photography': {'fotografia'},
+    'musica': {'music', 'musical'},
+    'music': {'musica'},
+    'sonido': {'sound', 'audio'},
+    'audio': {'audio', 'sound'},
+    'sound': {'sonido'},
+    'escultura': {'sculpture', 'sculpting'},
+    'sculpture': {'escultura'},
+    'anatomia': {'anatomy'},
+    'anatomy': {'anatomia'},
+    'color': {'color', 'colour'},
+
+    # Humanities & Society
+    'historia': {'history', 'historical'},
+    'history': {'historia'},
+    'filosofia': {'philosophy', 'philosophical'},
+    'philosophy': {'filosofia'},
+    'psicologia': {'psychology', 'psychological'},
+    'psychology': {'psicologia'},
+    'sociologia': {'sociology'},
+    'sociology': {'sociologia'},
+    'economia': {'economics', 'economy'},
+    'economics': {'economia'},
+    'finanzas': {'finance', 'financial'},
+    'finance': {'finanzas'},
+    'negocios': {'business'},
+    'business': {'negocios'},
+    'administracion': {'administration', 'management'},
+    'management': {'administracion'},
+    'contabilidad': {'accounting'},
+    'accounting': {'contabilidad'},
+    'marketing': {'marketing'},
+    'derecho': {'law', 'legal'},
+    'law': {'derecho'},
+    'medicina': {'medicine', 'medical'},
+    'medicine': {'medicina'},
+    'literatura': {'literature'},
+    'idioma': {'language'},
+    'idiomas': {'languages'},
+    'language': {'idioma'},
+    'languages': {'idiomas'},
+    'educacion': {'education', 'educational'},
+    'education': {'educacion'},
+
+    # Common Educational / Book terms
+    'introduccion': {'introduction', 'intro'},
+    'introduction': {'introduccion'},
+    'intro': {'introduccion'},
+    'avanzado': {'advanced'},
+    'avanzada': {'advanced'},
+    'advanced': {'avanzado', 'avanzada'},
+    'basico': {'basic', 'basics'},
+    'basica': {'basic'},
+    'basic': {'basico', 'basica'},
+    'basics': {'basico'},
+    'fundamentos': {'fundamentals', 'fundamental'},
+    'fundamentals': {'fundamentos'},
+    'guia': {'guide', 'handbook'},
+    'guide': {'guia'},
+    'manual': {'manual'},
+    'curso': {'course'},
+    'cursos': {'courses'},
+    'course': {'curso'},
+    'courses': {'cursos'},
+    'libro': {'book'},
+    'libros': {'books'},
+    'book': {'libro'},
+    'books': {'libros'},
+    'teoria': {'theory', 'theoretical'},
+    'theory': {'teoria'},
+    'practica': {'practice', 'practical'},
+    'practico': {'practical'},
+    'practice': {'practica'},
+    'practical': {'practico', 'practica'},
+    'ejercicios': {'exercises', 'exercise'},
+    'exercise': {'ejercicio'},
+    'exercises': {'ejercicios'},
+    'problemas': {'problems', 'problem'},
+    'problem': {'problema'},
+    'problems': {'problemas'},
+    'soluciones': {'solutions', 'solution'},
+    'solution': {'solucion'},
+    'solutions': {'soluciones'},
+    'analisis': {'analysis'},
+    'analysis': {'analisis'},
+    'metodos': {'methods'},
+    'metodo': {'method'},
+    'method': {'metodo'},
+    'methods': {'metodos'},
+    'principios': {'principles', 'principle'},
+    'principles': {'principios'},
+    'conceptos': {'concepts'},
+    'concepts': {'conceptos'},
+    'completo': {'complete'},
+    'completa': {'complete'},
+    'complete': {'completo', 'completa'},
+    'moderno': {'modern'},
+    'moderna': {'modern'},
+    'modern': {'moderno', 'moderna'},
+    'clasico': {'classic', 'classical'},
+    'clasica': {'classic', 'classical'},
+    'classic': {'clasico', 'clasica'},
+    'ciencia': {'science'},
+    'ciencias': {'sciences'},
+    'science': {'ciencia'},
+    'sciences': {'ciencias'},
+    'investigacion': {'research'},
+    'research': {'investigacion'},
+    'edicion': {'edition'},
+    'edition': {'edicion'},
+    'volumen': {'volume'},
+    'volume': {'volumen'},
+    'capitulo': {'chapter'},
+    'chapter': {'capitulo'},
+    'notas': {'notes'},
+    'notes': {'notas'},
+    'proyecto': {'project'},
+    'proyectos': {'projects'},
+    'project': {'proyecto'},
+    'projects': {'proyectos'},
+}
+
+def morphological_variants(word):
+    variants = set()
+    if word.endswith('cion'):
+        variants.add(word[:-4] + 'tion')
+    elif word.endswith('tion'):
+        variants.add(word[:-4] + 'cion')
+    if word.endswith('ia') and len(word) > 3:
+        variants.add(word[:-2] + 'y')
+    elif word.endswith('y') and len(word) > 2:
+        variants.add(word[:-1] + 'ia')
+    if word.endswith('icas') or word.endswith('icos'):
+        variants.add(word[:-4] + 'ics')
+    elif word.endswith('ica') or word.endswith('ico'):
+        variants.add(word[:-3] + 'ics')
+    elif word.endswith('ics'):
+        variants.add(word[:-3] + 'ica')
+        variants.add(word[:-3] + 'ico')
+    return variants
+
+def expand_word(raw):
+    norm = strip_accents(raw)
+    if not norm:
+        return set()
+    variants = {norm}
+    if norm in BILINGUAL_MAP:
+        variants.update(BILINGUAL_MAP[norm])
+    for syn in list(variants):
+        variants.update(morphological_variants(syn))
+    return {v for v in variants if v}
 
 def fts_query(value):
-    words=re.findall(r'\w+',str(value),re.UNICODE)
-    return ' AND '.join('"'+word+'"*' for word in words) if words else '""'
+    words = re.findall(r'[^\W_]+', str(value), re.UNICODE)
+    if not words:
+        return '""'
+    word_clauses = []
+    for raw in words:
+        variants = expand_word(raw)
+        if len(variants) == 1:
+            word_clauses.append(f'"{list(variants)[0]}"*')
+        else:
+            or_parts = ' OR '.join(f'"{v}"*' for v in sorted(variants))
+            word_clauses.append(f'({or_parts})')
+    return ' AND '.join(word_clauses)
 
 def limpiar_todos_filtros():
     return {"pildoras": []}
@@ -54,8 +316,9 @@ def agregar_filtro(token, estado_actual_filtros):
         return result
 
     # 3. Autor
-    if low.startswith('autor:'):
-        kind, value = 'autor', token[6:].strip().casefold()
+    if low.startswith('@autor:') or low.startswith('@autores:') or low.startswith('autor:'):
+        prefix_len = 7 if low.startswith('@autor:') else (9 if low.startswith('@autores:') else 6)
+        kind, value = 'autor', token[prefix_len:].strip().casefold()
         if not value: raise ValueError('Autor vacío')
         if not any(p['tipo'] == kind and p['valor'] == value for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
@@ -166,6 +429,10 @@ def agregar_filtro(token, estado_actual_filtros):
         if not any(p['tipo'] == 'favoritos' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='favoritos', valor=1))
         return result
+    if low == '@con:seguimiento':
+        if not any(p['tipo'] == 'con_seguimiento' for p in result['pildoras']):
+            result['pildoras'].append(dict(id=uuid4().hex, tipo='con_seguimiento', valor=1))
+        return result
 
     # Mantenimiento
     if low in ('@sin:etiquetas', '@sin:tags'):
@@ -212,6 +479,15 @@ def agregar_filtro(token, estado_actual_filtros):
         for s in raw_states:
             if s not in STATES: raise ValueError(f'Estado desconocido: {s}')
         kind, value = 'estados_in', tuple(sorted(set(raw_states)))
+        if not any(p['tipo'] == kind and p['valor'] == value for p in result['pildoras']):
+            result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
+        return result
+
+    # Idioma: @idioma:español, @idioma:ingles o @lang:...
+    if low.startswith('@idioma:') or low.startswith('@lang:'):
+        spec = token[token.index(':')+1:].strip()
+        if not spec: raise ValueError('Idioma vacío')
+        kind, value = 'idioma', spec
         if not any(p['tipo'] == kind and p['valor'] == value for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
         return result
@@ -271,18 +547,21 @@ def construir_query_sql(filtros_activos, perfil=None):
         if kind=='texto_titulo':
             query=fts_query(value)
             clauses.append('i.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)')
-            params.append('{titulo autor notas} : ('+query+')')
+            params.append('{titulo autor etiquetas notas} : ('+query+')')
         elif kind in ('tags_incluir','tags_excluir'):
-            clauses.append("instr(' ' || i.etiquetas || ' ', ?) "+('> 0' if kind=='tags_incluir' else '= 0'))
-            params.append(' +'+value+' ')
+            clauses.append("instr(' ' || normalize_tag(i.etiquetas) || ' ', ?) "+('> 0' if kind=='tags_incluir' else '= 0'))
+            params.append(' +' + normalize_tag(value) + ' ')
         elif kind == 'tags_or':
-            tag_clauses = ["instr(' ' || i.etiquetas || ' ', ?) > 0" for _ in value]
+            tag_clauses = ["instr(' ' || normalize_tag(i.etiquetas) || ' ', ?) > 0" for _ in value]
             clauses.append('(' + ' OR '.join(tag_clauses) + ')')
-            params.extend([' +' + t + ' ' for t in value])
+            params.extend([' +' + normalize_tag(t) + ' ' for t in value])
         elif kind == 'tags_excluir_all':
-            tag_clauses = ["instr(' ' || i.etiquetas || ' ', ?) = 0" for _ in value]
+            tag_clauses = ["instr(' ' || normalize_tag(i.etiquetas) || ' ', ?) = 0" for _ in value]
             clauses.append('(' + ' AND '.join(tag_clauses) + ')')
-            params.extend([' +' + t + ' ' for t in value])
+            params.extend([' +' + normalize_tag(t) + ' ' for t in value])
+        elif kind == 'idioma':
+            clauses.append("normalize_search(i.idioma) = normalize_search(?)")
+            params.append(value)
         elif kind=='autor':
             clauses.append("instr(char(10) || unicode_casefold(i.autor) || char(10), char(10) || ? || char(10)) > 0")
             params.append(value)
@@ -326,6 +605,8 @@ def construir_query_sql(filtros_activos, perfil=None):
         elif kind == 'favoritos':
             clauses.append('i.es_favorito = ?')
             params.append(value)
+        elif kind == 'con_seguimiento':
+            clauses.append("(i.es_favorito=1 OR COALESCE(i.rating,0)>0 OR (i.estado_lectura IS NOT NULL AND i.estado_lectura NOT IN ('','pendiente')) OR trim(COALESCE(i.notas,''))!='')")
         elif kind == 'sin_etiquetas':
             clauses.append("(i.etiquetas IS NULL OR trim(i.etiquetas) = '')")
         elif kind == 'con_etiquetas':
