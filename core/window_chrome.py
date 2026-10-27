@@ -100,6 +100,7 @@ class WindowChrome:
         self._lock = threading.Lock()
         self._snap_restore = None
         self._subclass_proc = None
+        self._fullscreen_state = None
 
     # ---- infraestructura -------------------------------------------------
     def _native(self):
@@ -219,6 +220,36 @@ class WindowChrome:
                 native.WindowState = FormWindowState.Normal
         self._ui(apply)
         return target
+
+    def set_fullscreen(self, enabled):
+        """Extiende la ventana al monitor completo, incluida el área de la barra de tareas."""
+        if not IS_WIN or not self.resolve():
+            return False
+        from System.Windows.Forms import FormWindowState, Screen
+        from System.Drawing import Rectangle
+
+        def apply():
+            native = self._native()
+            if enabled and self._fullscreen_state is None:
+                self._fullscreen_state = (native.WindowState, native.Bounds, native.TopMost)
+                screen = Screen.FromHandle(native.Handle)
+                bounds = screen.Bounds
+                native.WindowState = FormWindowState.Normal
+                native.MaximizedBounds = Rectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height)
+                native.Bounds = bounds
+                native.TopMost = True
+                native.BringToFront()
+            elif not enabled and self._fullscreen_state is not None:
+                state, bounds, topmost = self._fullscreen_state
+                native.TopMost = topmost
+                native.WindowState = FormWindowState.Normal
+                native.Bounds = bounds
+                self._fit_maximized_bounds()
+                native.WindowState = state
+                self._fullscreen_state = None
+
+        self._ui(apply)
+        return self._fullscreen_state is not None
 
     def drag(self, ratio_x=0.5, offset_y=20):
         """Inicia el bucle nativo de movimiento. Si está maximizada, la restaura bajo el cursor."""

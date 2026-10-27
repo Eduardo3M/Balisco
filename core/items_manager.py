@@ -28,7 +28,7 @@ class ItemsManager:
         if not item['disponible']: raise FileNotFoundError('Elemento no disponible en Drive')
         return str(self.ruta_local(item))
     def abrir_item(self,drive_id,modo='local'):
-        if modo not in ('local','web'): raise ValueError('Modo desconocido')
+        if modo not in ('local','web','balisco'): raise ValueError('Modo desconocido')
         item=self.obtener(drive_id)
         if modo=='web':
             if not webbrowser.open(self.url(drive_id)): return False

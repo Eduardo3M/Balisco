@@ -315,17 +315,22 @@ def agregar_filtro(token, estado_actual_filtros):
             result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
         return result
 
-    # 3. Autor
-    if low.startswith('@autor:') or low.startswith('@autores:') or low.startswith('autor:'):
-        prefix_len = 7 if low.startswith('@autor:') else (9 if low.startswith('@autores:') else 6)
+    STATE_ALIASES = {'pending':'pendiente','interested':'interesado','reading':'leyendo','read':'leido','dropped':'abandonado'}
+
+    # 3. Autor: @autor:... o @author:...
+    if low.startswith('@autor:') or low.startswith('@autores:') or low.startswith('autor:') or low.startswith('@author:') or low.startswith('author:'):
+        prefix_len = (8 if low.startswith('@author:') else
+                      7 if low.startswith('@autor:') else
+                      (9 if low.startswith('@autores:') else
+                       7 if low.startswith('author:') else 6))
         kind, value = 'autor', token[prefix_len:].strip().casefold()
         if not value: raise ValueError('Autor vacío')
         if not any(p['tipo'] == kind and p['valor'] == value for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
         return result
 
-    # 4. Formato: @formato:epub, @formato:epub,pdf o @fmt:...
-    if low.startswith('@formato:') or low.startswith('@fmt:'):
+    # 4. Formato: @formato:epub, @formato:epub,pdf o @fmt:... o @format:...
+    if low.startswith('@formato:') or low.startswith('@fmt:') or low.startswith('@format:'):
         spec = token[token.index(':')+1:].strip()
         formats = tuple(sorted(set(p.strip().upper() for p in spec.split(',') if p.strip())))
         if not formats: raise ValueError('Formato vacío')
@@ -334,8 +339,8 @@ def agregar_filtro(token, estado_actual_filtros):
             result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
         return result
 
-    # 5. Peso / Tamaño: @peso:... o @tamano:...
-    if low.startswith('@peso:') or low.startswith('@tamano:'):
+    # 5. Peso / Tamaño: @peso:... o @tamano:... o @size:... o @weight:...
+    if low.startswith('@peso:') or low.startswith('@tamano:') or low.startswith('@size:') or low.startswith('@weight:'):
         spec = token[token.index(':')+1:].strip().lower()
         if not spec: raise ValueError('Especificación de peso vacía')
         m_cmp = re.match(r'^(>=|<=|>|<)\s*(.+)$', spec)
@@ -394,22 +399,24 @@ def agregar_filtro(token, estado_actual_filtros):
             result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
         return result
 
-    # 7. Tipo: @tipo:documento, @tipo:documento,contenedor
-    if low.startswith('@tipo:'):
-        spec = token[6:].strip()
+    # 7. Tipo: @tipo:... o @type:...
+    if low.startswith('@tipo:') or low.startswith('@type:'):
+        spec = token[token.index(':')+1:].strip()
+        type_aliases = {'document':'documento','container':'contenedor','image':'imagen','other':'otro','pdf':'documento','archivo':'otro'}
         raw_types = [t.strip().casefold() for t in spec.split(',') if t.strip()]
         for val in raw_types:
-            if val == 'pdf': val = 'documento'
-            elif val == 'archivo': val = 'otro'
+            val = type_aliases.get(val, val)
             if val not in ('documento','contenedor','video','audio','imagen','otro'):
                 raise ValueError(f'Tipo desconocido: {val}')
             if not any(p['tipo'] == 'tipo' and p['valor'] == val for p in result['pildoras']):
                 result['pildoras'].append(dict(id=uuid4().hex, tipo='tipo', valor=val))
         return result
 
-    # 8. Orden
-    if low.startswith('@orden:'):
-        ord_val = token[7:].casefold()
+    # 8. Orden: @orden:... o @sort:...
+    if low.startswith('@orden:') or low.startswith('@sort:'):
+        ord_val = token[token.index(':')+1:].casefold()
+        sort_aliases = {'recent':'recientes','oldest':'antiguos','reading':'abiertos','size':'peso','light':'ligero','alphabetical':'alfabetico','alpha':'alfabetico'}
+        ord_val = sort_aliases.get(ord_val, ord_val)
         if ord_val not in ('recientes','antiguos','abiertos','peso','ligero','alfabetico'):
             raise ValueError('Orden desconocido')
         result['pildoras'] = [p for p in result['pildoras'] if p['tipo'] != 'orden']
@@ -421,61 +428,60 @@ def agregar_filtro(token, estado_actual_filtros):
         if not any(p['tipo'] == 'ocultos' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='ocultos', valor=1))
         return result
-    if low == '@recientes':
+    if low in ('@recientes', '@recent'):
         if not any(p['tipo'] == 'historial' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='historial', valor=1))
         return result
-    if low == '@favoritos':
+    if low in ('@favoritos', '@favorites'):
         if not any(p['tipo'] == 'favoritos' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='favoritos', valor=1))
         return result
-    if low == '@con:seguimiento':
+    if low in ('@con:seguimiento', '@with:tracking'):
         if not any(p['tipo'] == 'con_seguimiento' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='con_seguimiento', valor=1))
         return result
-
-    # Mantenimiento
-    if low in ('@sin:etiquetas', '@sin:tags'):
+    if low in ('@sin:etiquetas', '@sin:tags', '@without:tags', '@without:labels'):
         if not any(p['tipo'] == 'sin_etiquetas' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='sin_etiquetas', valor=1))
         return result
-    if low in ('@con:etiquetas', '@con:tags'):
+    if low in ('@con:etiquetas', '@con:tags', '@with:tags', '@with:labels'):
         if not any(p['tipo'] == 'con_etiquetas' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='con_etiquetas', valor=1))
         return result
-    if low in ('@con:notas', '@con:apuntes'):
+    if low in ('@con:notas', '@con:apuntes', '@with:notes'):
         if not any(p['tipo'] == 'con_notas' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='con_notas', valor=1))
         return result
-    if low in ('@sin:notas', '@sin:apuntes'):
+    if low in ('@sin:notas', '@sin:apuntes', '@without:notes'):
         if not any(p['tipo'] == 'sin_notas' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='sin_notas', valor=1))
         return result
-    if low == '@sin:autor':
+    if low in ('@sin:autor', '@without:author'):
         if not any(p['tipo'] == 'sin_autor' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='sin_autor', valor=1))
         return result
-    if low in ('@sin:portada', '@sin:miniatura', '@sin:cover'):
+    if low in ('@sin:portada', '@sin:miniatura', '@sin:cover', '@without:cover'):
         if not any(p['tipo'] == 'sin_portada' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='sin_portada', valor=1))
         return result
-    if low in ('@con:portada', '@con:miniatura', '@con:cover'):
+    if low in ('@con:portada', '@con:miniatura', '@con:cover', '@with:cover'):
         if not any(p['tipo'] == 'con_portada' for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='con_portada', valor=1))
         return result
 
-    # 10. Exclusión de estados: @!leido o -@leido
+    # 10. Exclusión de estados: @!leido, -@leido, @!read, -@read
     if token.startswith('@!') or token.startswith('-@'):
-        state = token[2:].strip().casefold()
-        if state not in STATES: raise ValueError(f'Estado desconocido: {state}')
+        raw_state = token[2:].strip().casefold()
+        state = STATE_ALIASES.get(raw_state, raw_state)
+        if state not in STATES: raise ValueError(f'Estado desconocido: {raw_state}')
         if not any(p['tipo'] == 'estado_excluir' and p['valor'] == state for p in result['pildoras']):
             result['pildoras'].append(dict(id=uuid4().hex, tipo='estado_excluir', valor=state))
         return result
 
-    # 11. Estados: @estado:pendiente,leyendo o @pendiente
-    if low.startswith('@estado:') or low.startswith('@estados:'):
+    # 11. Estados: @estado:pendiente,leyendo o @status:pending,reading
+    if low.startswith('@estado:') or low.startswith('@estados:') or low.startswith('@status:'):
         spec = token[token.index(':')+1:].strip().casefold()
-        raw_states = [s.strip() for s in spec.split(',') if s.strip()]
+        raw_states = [STATE_ALIASES.get(s.strip(), s.strip()) for s in spec.split(',') if s.strip()]
         for s in raw_states:
             if s not in STATES: raise ValueError(f'Estado desconocido: {s}')
         kind, value = 'estados_in', tuple(sorted(set(raw_states)))
@@ -483,8 +489,8 @@ def agregar_filtro(token, estado_actual_filtros):
             result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
         return result
 
-    # Idioma: @idioma:español, @idioma:ingles o @lang:...
-    if low.startswith('@idioma:') or low.startswith('@lang:'):
+    # 12. Idioma: @idioma:..., @lang:..., @language:...
+    if low.startswith('@idioma:') or low.startswith('@lang:') or low.startswith('@language:'):
         spec = token[token.index(':')+1:].strip()
         if not spec: raise ValueError('Idioma vacío')
         kind, value = 'idioma', spec
@@ -495,16 +501,17 @@ def agregar_filtro(token, estado_actual_filtros):
     if token.startswith('@'):
         spec = token[1:].casefold()
         if ',' in spec:
-            raw_states = [s.strip() for s in spec.split(',') if s.strip()]
+            raw_states = [STATE_ALIASES.get(s.strip(), s.strip()) for s in spec.split(',') if s.strip()]
             for s in raw_states:
                 if s not in STATES: raise ValueError(f'Estado desconocido: {s}')
             kind, value = 'estados_in', tuple(sorted(set(raw_states)))
             if not any(p['tipo'] == kind and p['valor'] == value for p in result['pildoras']):
                 result['pildoras'].append(dict(id=uuid4().hex, tipo=kind, valor=value))
             return result
-        if spec in STATES:
-            if not any(p['tipo'] == 'estados' and p['valor'] == spec for p in result['pildoras']):
-                result['pildoras'].append(dict(id=uuid4().hex, tipo='estados', valor=spec))
+        mapped_state = STATE_ALIASES.get(spec, spec)
+        if mapped_state in STATES:
+            if not any(p['tipo'] == 'estados' and p['valor'] == mapped_state for p in result['pildoras']):
+                result['pildoras'].append(dict(id=uuid4().hex, tipo='estados', valor=mapped_state))
             return result
         raise ValueError('Estado desconocido')
 

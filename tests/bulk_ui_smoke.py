@@ -38,7 +38,41 @@ def run(window):
           await wait(()=>S.selected.etiquetas.includes('+arte'));
           const ids=[...S.bulkIds],details=await Promise.all(ids.map(async id=>(await pywebview.api.call('detail',{id})).data));
           if(!details.every(item=>item.autor.includes('María Sol')&&item.etiquetas.includes('+arte')))throw Error('Bulk metadata missing');
-          return {ok:true,authors:details.length};
+          await wait(()=>document.querySelectorAll('.card').length===2);
+          document.querySelector('.card').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:180,clientY:180}));
+          await wait(()=>document.querySelector('[data-item-action="manage-tags"]'));
+          document.querySelector('[data-item-action="manage-tags"]').click();
+          await wait(()=>document.querySelector('.tag-manager-dialog')?.open);
+          const dialog=document.querySelector('.tag-manager-dialog');
+          if(!dialog.querySelector('[data-scope="shared"]'))throw Error('Shared tags missing');
+          $('langToggle').click();await wait(()=>dialog.querySelector('h2').textContent==='Manage tags');
+          $('langToggle').click();await wait(()=>dialog.querySelector('h2').textContent==='Gestionar etiquetas');
+          const tagInput=dialog.querySelector('input');tagInput.value='ciencia';dialog.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+          await wait(()=>[...dialog.querySelectorAll('.tag-manager-chip span')].some(node=>node.textContent==='ciencia'));
+          tagInput.value='cie';tagInput.dispatchEvent(new Event('input',{bubbles:true}));
+          await wait(()=>[...dialog.querySelectorAll('.metadata-suggestions [role="option"]')].some(node=>node.textContent.includes('ciencia')));
+          tagInput.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));
+          tagInput.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+          await wait(()=>tagInput.value==='');
+          const updated=await Promise.all(ids.map(async id=>(await pywebview.api.call('detail',{id})).data));
+          if(!updated.every(item=>item.etiquetas.includes('+ciencia')))throw Error('Context tag edit missing');
+          dialog.close();
+          document.dispatchEvent(new KeyboardEvent('keydown',{key:'F2',bubbles:true,cancelable:true}));
+          await wait(()=>document.querySelector('.bulk-rename-dialog')?.open);
+          const rename=document.querySelector('.bulk-rename-dialog'),pattern=rename.querySelector('input');
+          pattern.value='Serie {n}: {nombre}';rename.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+          await wait(()=>!document.querySelector('.bulk-rename-dialog'));
+          const renamed=await Promise.all(ids.map(async id=>(await pywebview.api.call('detail',{id})).data));
+          if(!renamed.every(item=>item.titulo.startsWith('Serie ')))throw Error('Bulk F2 rename missing');
+          await wait(()=>document.querySelectorAll('.card').length===2);
+          const single=document.querySelector('.card');single.click();await wait(()=>S.bulkIds.size===0);
+          single.click();await wait(()=>S.bulkIds.size===1);
+          single.dispatchEvent(new KeyboardEvent('keydown',{key:'F2',bubbles:true,cancelable:true}));
+          await wait(()=>document.querySelector('.card-title-input'));
+          const titleInput=document.querySelector('.card-title-input');if(titleInput.selectionStart!==0||titleInput.selectionEnd!==titleInput.value.length)throw Error('F2 did not select card title');
+          titleInput.value='Título individual';titleInput.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+          await wait(()=>S.items.some(item=>item.titulo==='Título individual'));
+          return {ok:true,authors:details.length,tags:updated.length,renamed:renamed.length};
         })().catch(e=>({ok:false,error:e.message,stack:e.stack}))"""
         window.evaluate_js(script,callback=lambda value:(result.update(value),done.set()))
         if not done.wait(15): result.update(ok=False,error='JS timeout')

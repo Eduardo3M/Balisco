@@ -96,7 +96,7 @@ class DesktopAPI:
         valid=[p['id'] for p in detectar_perfiles_drive() if not p.get('error')]
         if len(valid)==1:
             with self._lock,self._sync_lock:self._open_active_profile(valid[0])
-    WINDOW_ACTIONS = frozenset({'close', 'window_minimize', 'window_toggle_maximize',
+    WINDOW_ACTIONS = frozenset({'close', 'window_minimize', 'window_toggle_maximize', 'window_set_fullscreen',
                                 'window_drag', 'window_resize', 'window_state', 'window_snap'})
     def call(self, action, payload=None):
         """Only this method is exposed to JS. Never accept executable SQL or paths."""
@@ -255,6 +255,7 @@ class DesktopAPI:
                         relative=relative_path(db,profile,target_path,library_root(db,profile))
                         imported_id=drive_id_for_path(profile,relative,is_folder=kind=='folder',timeout=90,cancelled=cancelled)
                         self._set_import_drive_id(ident,imported_id)
+                        data['id']=imported_id
                         try:
                             target=Path(target_path)
                             if kind=='folder':
@@ -293,11 +294,28 @@ class DesktopAPI:
         if chrome is None: return None
         if action=='window_minimize': return chrome.minimize()
         if action=='window_toggle_maximize': return {'maximized':chrome.toggle_maximize()}
+        if action=='window_set_fullscreen': return {'fullscreen':chrome.set_fullscreen(bool(p.get('enabled')))}
         if action=='window_state': return {'maximized':chrome.is_maximized()}
         if action=='window_drag': return chrome.drag(float(p.get('rx',0.5)),int(p.get('oy',20)))
         if action=='window_snap': return chrome.snap()
         if action=='window_resize': return chrome.resize(str(p.get('edge','')))
         return None
+    def _ensure_cover_on_open(self,profile,ident,file_path,rel=''):
+        try:
+            if not ident or not ID_PATTERN.fullmatch(str(ident)) or not file_path or not Path(file_path).is_file():return False
+            dest=self._dir/'portadas'/(f'{ident}.jpg')
+            if dest.is_file() and not dest.is_symlink():return False
+            if rel:
+                from .thumbnailer import thumbnail_name
+                auto_dest=self._dir/'portadas_auto'/thumbnail_name(profile,rel)
+                if auto_dest.is_file() and not auto_dest.is_symlink():return False
+            from .thumbnailer import create_thumbnail
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            create_thumbnail(Path(file_path),dest)
+            self._invalidate_cover_cache()
+            return dest.is_file()
+        except Exception:
+            return False
     def _item(self,db,ident):
         item=ItemsManager(db).obtener(ident)
         if item['perfil_drive']!=preferencia(db,'id_perfil_drive','') or not item['disponible']:
@@ -449,6 +467,26 @@ class DesktopAPI:
             methods={'titulo':manager.cambiar_titulo,'autor':manager.cambiar_autor,'idioma':manager.cambiar_idioma,'notas':manager.actualizar_notas,'rating':manager.cambiar_rating,'estado_lectura':manager.cambiar_estado_lectura,'es_favorito':manager.cambiar_favorito,'etiquetas':TagsManager(db).actualizar_etiquetas_item}
             if p['field'] not in methods: raise ValueError('Campo no editable')
             methods[p['field']](p['id'],p['value']); return self._item(db,p['id'])
+        if action=='bulk_rename':
+            updates=p.get('updates')
+            if not isinstance(updates,list) or not 1<=len(updates)<=10000:
+                raise ValueError('Selección inválida')
+            titles={}
+            for entry in updates:
+                if not isinstance(entry,dict) or not isinstance(entry.get('id'),str) or not isinstance(entry.get('title'),str):
+                    raise ValueError('Título inválido')
+                ident=entry['id']; title=entry['title'].strip()
+                if ident in titles or not title or len(title)>500 or '\n' in title or '\r' in title:
+                    raise ValueError('Título inválido')
+                titles[ident]=title
+            items=[self._item(db,ident) for ident in titles]
+            with db:
+                db.executemany('UPDATE items SET titulo=?,titulo_personalizado=1 WHERE id=?',
+                               [(titles[item['drive_id']],item['id']) for item in items])
+            for records in self._containers.values():
+                for ident,title in titles.items():
+                    if ident in records: records[ident]['title']=title
+            return {'updated':len(items)}
         if action=='selection_properties':
             ids=p.get('ids')
             if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)) or any(not isinstance(ident,str) for ident in ids):
@@ -468,6 +506,16 @@ class DesktopAPI:
                     if field not in result:result[field]=value
                     elif result[field]!=value:result[field]=None
             return result
+        if action=='selection_tags':
+            from collections import Counter
+            from .tags_manager import normalizar
+            ids=p.get('ids')
+            if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)) or any(not isinstance(ident,str) for ident in ids):
+                raise ValueError('Selección inválida')
+            counts=Counter()
+            for ident in ids:
+                counts.update(normalizar(self._item(db,ident)['etiquetas']))
+            return {'total':len(ids),'tags':[{'tag':tag,'count':count} for tag,count in sorted(counts.items(),key=lambda row:(-row[1],row[0]))]}
         if action=='bulk_update':
             ids=p.get('ids');field=p.get('field');value=p.get('value')
             if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)):
@@ -548,8 +596,69 @@ class DesktopAPI:
             self._item(db,p['id'])
             return obtener_similares(db,p['id'],profile)
         if action=='open':
-            self._item(db,p['id']); result=manager.abrir_item(p['id'],p.get('mode','web'))
+            item=self._item(db,p['id']); result=manager.abrir_item(p['id'],p.get('mode','web'))
+            if item['tipo']!='curso':
+                try:self._ensure_cover_on_open(profile,p['id'],manager.ruta_local(item),item.get('ruta_relativa') or '')
+                except Exception:pass
             with db:db.execute('UPDATE items SET recent_hidden=0 WHERE drive_id=?',(p['id'],))
+            return result
+        if action=='player_open':
+            from .player_server import get_player_server
+            ident=str(p.get('id',''));container_id=str(p.get('container') or '')
+            if not ID_PATTERN.fullmatch(ident):raise ValueError('ID inválido')
+            path=None;item_meta=None
+            if container_id:
+                container=self._item(db,container_id)
+                if container_id not in self._containers:
+                    self._dispatch(db,'container',{'id':container_id})
+                record=self._containers.get(container_id,{}).get(ident)
+                if record:
+                    if record.get('folder'):raise ValueError('Abre una carpeta desde la vista del contenedor')
+                    path=manager.ruta_local(dict(container,ruta_relativa=record['path']))
+                    row=db.execute('SELECT * FROM items WHERE drive_id=? AND perfil_drive=?',(ident,profile)).fetchone()
+                    item_meta=dict(row) if row else {'drive_id':ident,'titulo':Path(record['title']).stem,'formato':Path(record['path']).suffix.lstrip('.').upper()}
+                    item_meta['container_id']=container_id
+            if path is None:
+                item=self._item(db,ident)
+                if item['tipo']=='curso':raise ValueError('Los contenedores se abren en el explorador')
+                path=manager.ruta_local(item)
+                if not path.exists():path=Path(manager.auto_reparar_ruta(ident))
+                item_meta=dict(item,container_id=item.get('container_parent') or '')
+            if not path.is_file():raise FileNotFoundError(f'El archivo no está disponible en el equipo: {path.name}')
+            with db:db.execute('UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP,recent_hidden=0 WHERE drive_id=?',(ident,))
+            cover_rendered=self._ensure_cover_on_open(profile,ident,path,item_meta.get('ruta_relativa') or '')
+            payload=get_player_server().build_player_payload(path,item_meta)
+            payload['cover_rendered']=bool(cover_rendered)
+            return payload
+        if action=='player_epub_chapter':
+            from .player_server import get_player_server
+            srv=get_player_server()
+            ticket=str(p.get('ticket',''))
+            entry=srv.get_ticket(ticket)
+            if not entry:raise ValueError('Sesión del lector expirada')
+            return srv.read_epub_chapter(ticket,entry,int(p.get('index',0)))
+        if action=='player_pdf_text':
+            from .player_server import get_player_server
+            srv=get_player_server()
+            ticket=str(p.get('ticket',''))
+            entry=srv.get_ticket(ticket)
+            if not entry:raise ValueError('Sesión del lector expirada')
+            return srv.get_pdf_page_text(ticket,entry,int(p.get('page',0)))
+        if action=='player_pdf_search':
+            from .player_server import get_player_server
+            srv=get_player_server()
+            ticket=str(p.get('ticket',''))
+            entry=srv.get_ticket(ticket)
+            if not entry:raise ValueError('Sesión del lector expirada')
+            return srv.search_pdf(ticket,entry,str(p.get('query','')))
+        if action=='player_epub_search':
+            from .player_server import get_player_server
+            srv=get_player_server()
+            ticket=str(p.get('ticket',''))
+            entry=srv.get_ticket(ticket)
+            if not entry:raise ValueError('Sesión del lector expirada')
+            return srv.search_epub(ticket,entry,str(p.get('query','')))
+        if False:
             return result
         if action=='reveal':
             self._item(db,p['id']); return manager.mostrar_en_explorador(p['id'])
@@ -597,7 +706,7 @@ class DesktopAPI:
         if action=='preference':
             key,value=p['key'],str(p['value'])
             if key=='tema' and value not in ('auto','dark','light'): raise ValueError('Tema inválido')
-            elif key=='modo' and value not in ('local','web'): raise ValueError('Modo inválido')
+            elif key=='modo' and value not in ('local','web','balisco'): raise ValueError('Modo inválido')
             elif key=='zoom' and not 60<=int(value)<=430: raise ValueError('Zoom inválido')
             elif key=='wallpaper_opacity' and not 0<=int(value)<=100: raise ValueError('Opacidad inválida')
             elif key=='wallpaper_blur' and not 0<=int(value)<=30: raise ValueError('Desenfoque inválido')
@@ -983,8 +1092,22 @@ class DesktopAPI:
             container=self._item(db,p['container'])
             if container['tipo']!='curso': raise ValueError('No es un contenedor')
             ident=str(p.get('id',''));field=p.get('field');value=p.get('value')
-            allowed={'es_favorito','rating','estado_lectura','oculto','mostrar_en_filtros'}
+            allowed={'es_favorito','rating','estado_lectura','oculto','mostrar_en_filtros','titulo'}
             if field not in allowed: raise ValueError('Propiedad del recurso no permitida')
+            record=self._containers.get(p['container'],{}).get(ident)
+            if not record:
+                self._dispatch(db,'container',{'id':p['container']})
+                record=self._containers.get(p['container'],{}).get(ident)
+            if not record: raise ValueError('El recurso ya no está en este contenedor')
+            if field=='titulo':
+                if not isinstance(value,str) or not value.strip(): raise ValueError('Título no válido')
+                val=value.strip()
+                with db:
+                    updated=db.execute('UPDATE items SET titulo=?,titulo_personalizado=1 WHERE drive_id=? AND perfil_drive=?',
+                                       (val,ident,profile)).rowcount
+                if not updated: raise ValueError('Este archivo todavía no tiene propiedades de biblioteca')
+                if record: record['title']=val
+                return {'field':'titulo','value':val}
             record=self._containers.get(p['container'],{}).get(ident)
             if not record:
                 self._dispatch(db,'container',{'id':p['container']})
@@ -1168,11 +1291,14 @@ class DesktopAPI:
             if not record: raise ValueError('Vuelve a cargar el contenedor')
             if record.get('folder'): raise ValueError('Abre una carpeta desde la vista del contenedor')
             if action=='container_open' and p.get('mode')=='web':
+                try:self._ensure_cover_on_open(profile,p['id'],manager.ruta_local(dict(container,ruta_relativa=record['path'])),record.get('path') or '')
+                except Exception:pass
                 opened=webbrowser.open('https://drive.google.com/file/d/'+record['id']+'/view')
                 with db:db.execute('UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP,recent_hidden=0 WHERE drive_id=?',(p['id'],))
                 return opened
             item=dict(container,ruta_relativa=record['path']); path=manager.ruta_local(item)
             if action=='container_open':
+                self._ensure_cover_on_open(profile,p['id'],path,record.get('path') or '')
                 os.startfile(str(path))
                 with db:db.execute('UPDATE items SET ultimo_acceso=CURRENT_TIMESTAMP,recent_hidden=0 WHERE drive_id=?',(p['id'],))
             else:

@@ -1,4 +1,298 @@
-import {icon} from './icons.js?v=22';
+let currentLang = localStorage.getItem('balisco.language') || 'es';
+
+const TRANSLATIONS = {
+ es: {
+  summaryTitle: 'Elementos mostrados',
+  summaryText: (count, total) => `${count} de ${total} elementos`,
+  summaryEmpty: 'Sin elementos',
+  tagTitle: 'Metadatos y taxonomía',
+  favOnlyTitle: 'Mostrar solo favoritos',
+  statusFilterTitle: 'Filtrar por estado',
+  ratingTitle: 'Filtrar por calificación',
+  typeTitle: 'Filtrar por tipo',
+  sortTitle: 'Ordenar biblioteca',
+  zoomTitle: (col, lvl, max) => `Cuadrícula: ${col} columnas · nivel ${lvl} de ${max}`,
+  modeTitle: (label) => `Modo de apertura: ${label} · clic o rueda para cambiar`,
+  diceTitle: 'Buscar relacionados',
+  similarTitle: 'Buscar similares al elemento seleccionado',
+  syncTitle: 'Sincronizar biblioteca',
+  importsTitle: 'Gestionar cargas',
+  driveToolsTitle: 'Mantenimiento de Google Drive',
+  wallpaperTitle: 'Fondo y tema',
+  langTitle: 'Idioma: Español (clic para cambiar a English)',
+  langBadge: 'ES',
+  inspectorToggleTitle: 'Compactar panel de detalles',
+  winMinTitle: 'Minimizar',
+  winMaxTitle: 'Maximizar',
+  winRestoreTitle: 'Restaurar',
+  winCloseTitle: 'Cerrar',
+  searchToggleTitle: 'Buscar · Ctrl+F',
+  searchPlaceholder: 'Buscar en la biblioteca…',
+  searchBarTitle: 'Escribe @barra para mover la búsqueda arriba o abajo o .help para comandos',
+
+  modeBalisco: 'Balisco (reproductor integrado)',
+  modeLocal: 'Local (aplicación externa)',
+  modeDrive: 'Drive (navegador)',
+
+  sortRecent: 'Recientes',
+  sortRecentDesc: 'Por acceso más reciente',
+  sortSize: 'Peso / Tamaño',
+  sortSizeDesc: 'Mayor tamaño a menor',
+  sortAlpha: 'Alfabético',
+  sortAlphaDesc: 'De la A a la Z por título',
+  sortOldest: 'Antiguos',
+  sortOldestDesc: 'Por fecha más antigua',
+  sortReading: 'Abiertos / Lectura',
+  sortReadingDesc: 'Por estado de lectura',
+
+  statePending: 'Pendiente',
+  statePendingDesc: 'Por leer o en espera',
+  stateInterested: 'Interesado',
+  stateInterestedDesc: 'En lista de deseos / para revisar',
+  stateReading: 'Leyendo',
+  stateReadingDesc: 'En progreso de lectura',
+  stateRead: 'Leído',
+  stateReadDesc: 'Lectura completada',
+  stateDropped: 'Abandonado',
+  stateDroppedDesc: 'Lectura descartada',
+
+  typeDoc: 'Documento',
+  typeContainer: 'Contenedor',
+  typeVideo: 'Vídeo',
+  typeAudio: 'Audio',
+  typeImage: 'Imagen',
+  typeOther: 'Otro archivo',
+
+  propSize: 'Tamaño',
+  propType: 'Tipo',
+  propFormat: 'Formato',
+  propContainer: 'Contenedor',
+  propAdded: 'Añadido',
+  propDimensions: 'Páginas / dimensiones',
+  propDimensionsNone: 'No disponibles',
+  propPinned: 'Fijado',
+  propVisible: 'Visible',
+  propNotes: 'Notas',
+  propRating: 'Calificación',
+  propStatus: 'Estado de lectura',
+  propLanguage: 'Idioma',
+  propDeepSearch: 'Búsqueda profunda en catálogo general',
+  propShowInFilters: 'Mostrar en filtros principales',
+  propSaving: 'Guardando…',
+  propSaved: 'Guardado',
+  propUnsaved: 'Sin guardar',
+  pinAction: 'Fijar',
+  unpinAction: 'Quitar',
+  assignContainer: 'Asignar a contenedor',
+
+  playerBack: 'Volver a la biblioteca (Escape)',
+  playerSplit: 'Dividir pantalla: ver 2 contenidos en paralelo',
+  playerSplitClose: 'Cerrar pantalla dividida',
+  playerSplitDisabled: 'Desactiva la vista de 2 páginas para usar pantalla dividida',
+  playerFavAdd: 'Marcar como favorito',
+  playerFavRemove: 'Quitar de favoritos',
+  playerState: 'Estado de lectura',
+  playerLocal: 'Abrir con aplicación externa (Modo Local)',
+  playerDrive: 'Abrir en Google Drive (Modo Drive)',
+  playerFs: 'Pantalla completa (F)',
+  playerGalleryToggle: 'Mostrar u ocultar galería lateral',
+  playerGalleryTitle: 'GALERÍA DE CONTENIDOS',
+  playerGallerySearch: 'Buscar contenido…',
+  playerGalleryCollapse: 'Colapsar galería',
+  playerGalleryExpand: 'Mostrar galería de contenidos',
+  playerGalleryEmpty: 'Sin contenidos que coincidan con el filtro.',
+  playerGalleryAll: 'Todos',
+  playerPane1: 'Panel 1',
+  playerPane2: 'Panel 2',
+  playerCloseSplit: 'Cerrar segundo panel',
+  playerToc: 'Índice de contenidos',
+  playerAnnots: 'Ver marcadores',
+  playerBmkAdd: 'Añadir marcador en la página actual (Ctrl+D)',
+  playerPrev: 'Página anterior',
+  playerNext: 'Página siguiente',
+  playerZoomOut: 'Alejar',
+  playerZoomIn: 'Acercar',
+  playerResetZoom: 'Restablecer zoom',
+  playerFitWidth: 'Ajustar al ancho',
+  playerFitPage: 'Ajustar página completa',
+  playerTwoPage: 'Ver dos páginas lado a lado (Doble página)',
+  playerRotate: 'Girar 90°',
+  playerPip: 'Pantalla en pantalla (PiP)',
+  playerPlay: 'Reproducir / Pausar (Espacio)',
+  playerMute: 'Silenciar (M)',
+  playerSpeed: 'Velocidad',
+  playerRepeat: 'Repetir',
+  playerTitleEditHint: 'Clic para modificar',
+  playerTitleEditAria: 'Modificar título',
+  playerTitleSuccess: 'Título modificado',
+  playerTitleError: 'Error al modificar título',
+
+  langSwitched: 'Idioma cambiado a Español',
+  barMovedUp: 'Búsqueda arriba',
+  barMovedDown: 'Búsqueda abajo',
+  confirmDeleteOn: 'Confirmación de Suprimir activada',
+  confirmDeleteOff: 'Confirmación de Suprimir desactivada',
+  recentTitlesOn: 'Títulos en búsquedas recientes: Activados',
+  recentTitlesOff: 'Títulos en búsquedas recientes: Desactivados (solo etiquetas y comandos)'
+ },
+ en: {
+  summaryTitle: 'Displayed items',
+  summaryText: (count, total) => `${count} of ${total} items`,
+  summaryEmpty: 'No items',
+  tagTitle: 'Metadata & taxonomy',
+  favOnlyTitle: 'Show favorites only',
+  statusFilterTitle: 'Filter by status',
+  ratingTitle: 'Filter by rating',
+  typeTitle: 'Filter by type',
+  sortTitle: 'Sort library',
+  zoomTitle: (col, lvl, max) => `Grid: ${col} columns · level ${lvl} of ${max}`,
+  modeTitle: (label) => `Open mode: ${label} · click or scroll to switch`,
+  diceTitle: 'Find related',
+  similarTitle: 'Find similar to selected item',
+  syncTitle: 'Sync library',
+  importsTitle: 'Manage downloads & imports',
+  driveToolsTitle: 'Google Drive maintenance',
+  wallpaperTitle: 'Wallpaper & theme',
+  langTitle: 'Language: English (click to switch to Español)',
+  langBadge: 'EN',
+  inspectorToggleTitle: 'Toggle details panel',
+  winMinTitle: 'Minimize',
+  winMaxTitle: 'Maximize',
+  winRestoreTitle: 'Restore',
+  winCloseTitle: 'Close',
+  searchToggleTitle: 'Search · Ctrl+F',
+  searchPlaceholder: 'Search library…',
+  searchBarTitle: 'Type @bar to move search up or down or .help for commands',
+
+  modeBalisco: 'Balisco (integrated player)',
+  modeLocal: 'Local (external application)',
+  modeDrive: 'Drive (web browser)',
+
+  sortRecent: 'Recent',
+  sortRecentDesc: 'By most recent access',
+  sortSize: 'Size / Weight',
+  sortSizeDesc: 'Largest to smallest',
+  sortAlpha: 'Alphabetical',
+  sortAlphaDesc: 'A to Z by title',
+  sortOldest: 'Oldest',
+  sortOldestDesc: 'By oldest date',
+  sortReading: 'Reading state',
+  sortReadingDesc: 'By reading status',
+
+  statePending: 'Pending',
+  statePendingDesc: 'To read or on hold',
+  stateInterested: 'Interested',
+  stateInterestedDesc: 'Wishlist / to review',
+  stateReading: 'Reading',
+  stateReadingDesc: 'Currently reading',
+  stateRead: 'Read',
+  stateReadDesc: 'Reading completed',
+  stateDropped: 'Dropped',
+  stateDroppedDesc: 'Dropped / set aside',
+
+  typeDoc: 'Document',
+  typeContainer: 'Container',
+  typeVideo: 'Video',
+  typeAudio: 'Audio',
+  typeImage: 'Image',
+  typeOther: 'Other file',
+
+  propSize: 'Size',
+  propType: 'Type',
+  propFormat: 'Format',
+  propContainer: 'Container',
+  propAdded: 'Added',
+  propDimensions: 'Pages / dimensions',
+  propDimensionsNone: 'Not available',
+  propPinned: 'Pinned',
+  propVisible: 'Visible',
+  propNotes: 'Notes',
+  propRating: 'Rating',
+  propStatus: 'Reading status',
+  propLanguage: 'Language',
+  propDeepSearch: 'Deep search in general catalog',
+  propShowInFilters: 'Show in main filters',
+  propSaving: 'Saving…',
+  propSaved: 'Saved',
+  propUnsaved: 'Unsaved',
+  pinAction: 'Pin',
+  unpinAction: 'Unpin',
+  assignContainer: 'Assign to container',
+
+  playerBack: 'Back to library (Escape)',
+  playerSplit: 'Split screen: view 2 items in parallel',
+  playerSplitClose: 'Close split screen',
+  playerSplitDisabled: 'Turn off 2-page view to use split screen',
+  playerFavAdd: 'Add to favorites',
+  playerFavRemove: 'Remove from favorites',
+  playerState: 'Reading status',
+  playerLocal: 'Open in external application (Local Mode)',
+  playerDrive: 'Open in Google Drive (Drive Mode)',
+  playerFs: 'Fullscreen (F)',
+  playerGalleryToggle: 'Toggle content gallery',
+  playerGalleryTitle: 'CONTENT GALLERY',
+  playerGallerySearch: 'Search content…',
+  playerGalleryCollapse: 'Collapse gallery',
+  playerGalleryExpand: 'Show content gallery',
+  playerGalleryEmpty: 'No contents matching filter.',
+  playerGalleryAll: 'All',
+  playerPane1: 'Panel 1',
+  playerPane2: 'Panel 2',
+  playerCloseSplit: 'Close secondary panel',
+  playerToc: 'Table of Contents',
+  playerAnnots: 'View bookmarks',
+  playerBmkAdd: 'Add bookmark on current page (Ctrl+D)',
+  playerPrev: 'Previous page',
+  playerNext: 'Next page',
+  playerZoomOut: 'Zoom out',
+  playerZoomIn: 'Zoom in',
+  playerResetZoom: 'Reset zoom',
+  playerFitWidth: 'Fit to width',
+  playerFitPage: 'Fit full page',
+  playerTwoPage: 'Two-page view side by side',
+  playerRotate: 'Rotate 90°',
+  playerPip: 'Picture in Picture (PiP)',
+  playerPlay: 'Play / Pause (Space)',
+  playerMute: 'Mute (M)',
+  playerSpeed: 'Speed',
+  playerRepeat: 'Repeat',
+  playerTitleEditHint: 'Click to modify',
+  playerTitleEditAria: 'Modify title',
+  playerTitleSuccess: 'Title updated',
+  playerTitleError: 'Error updating title',
+
+  langSwitched: 'Language changed to English',
+  barMovedUp: 'Search bar top',
+  barMovedDown: 'Search bar bottom',
+  confirmDeleteOn: 'Delete confirmation enabled',
+  confirmDeleteOff: 'Delete confirmation disabled',
+  recentTitlesOn: 'Titles in recent searches: Enabled',
+  recentTitlesOff: 'Titles in recent searches: Disabled (tags and commands only)'
+ }
+};
+
+function t(key, ...args) {
+ const dict = TRANSLATIONS[currentLang] || TRANSLATIONS.es;
+ const val = dict[key] !== undefined ? dict[key] : (TRANSLATIONS.es[key] !== undefined ? TRANSLATIONS.es[key] : key);
+ if (typeof val === 'function') return val(...args);
+ return val;
+}
+const UI_PHRASES={
+ 'Biblioteca':'Library','Metadatos':'Metadata','Etiquetas':'Tags','Autores':'Authors','Buscar metadatos…':'Search metadata…','Volver a biblioteca':'Back to library','Subir un nivel':'Up one level','Abrir en Explorador de Windows':'Open in Windows Explorer','Ruta del contenedor':'Container path','Tamaño de la vista':'View size','Cambiar vista':'Change view','RECURSO':'RESOURCE','TAMAÑO':'SIZE','Todo en su lugar':'Everything in its place','Inspector':'Inspector','Título':'Title','NOTAS':'NOTES','Ideas, conexiones, algo que recordar…':'Ideas, connections, something to remember…','Notas Markdown':'Markdown notes','Mostrar en el Explorador de Windows':'Show in Windows Explorer','ETIQUETAS':'TAGS','AUTORES':'AUTHORS','PROPIEDADES':'PROPERTIES','Favorito':'Favorite','Estado':'Status','Sin especificar':'Not specified','Nueva etiqueta':'New tag','Añadir etiqueta':'Add tag','Añadir autor':'Add author','Nombre del autor':'Author name','Autores del libro':'Book authors','Añadir':'Add','Sin portada personalizada':'No custom cover','Cargar portada':'Upload cover','ACCIONES':'ACTIONS','Cambiar portada…':'Change cover…','Eliminar portada':'Delete cover','Guardar portada':'Save cover','Opciones de portada':'Cover options','Cerrar modal':'Close dialog','Cerrar (Escape)':'Close (Escape)','Área de encuadre y recorte':'Crop area','Reducir zoom':'Zoom out','Aumentar zoom':'Zoom in','Nivel de zoom':'Zoom level','Centrar imagen':'Center image','Ajustar imagen completa':'Fit whole image','Llenar marco':'Fill frame','Centrar':'Center','Ajustar':'Fit','Llenar':'Fill','Girar 90 grados':'Rotate 90 degrees','Arrastra la imagen para centrar a mano · Rueda para zoom':'Drag to center the image · Scroll to zoom','Administrar idiomas':'Manage languages','Configura los idiomas disponibles para clasificar y organizar tu biblioteca:':'Set the languages available to organize your library:','Nuevo idioma…':'New language…','Nuevo idioma':'New language','Cargas':'Imports','Tipos de cargas':'Import types','Contenedores':'Containers','Elementos':'Items','No hay cargas recientes en esta sección.':'No recent imports in this section.','Copiado en Drive':'Copied to Drive','Cancelar carga':'Cancel import','Eliminar de Drive':'Delete from Drive','Sincronizando…':'Syncing…','Cargando biblioteca':'Loading library','Cargando contenido':'Loading content','Tu biblioteca empieza aquí':'Your library starts here','Sincroniza tu Biblioteca de Google Drive para empezar.':'Sync your Google Drive library to begin.','Buscar en galería':'Search gallery','Filtrar por tipo de contenido':'Filter by content type','Filtrar galería por tipo':'Filter gallery by type','Reproductor integrado de Balisco':'Balisco integrated player','Modo Balisco':'Balisco mode','Modificar título':'Edit title','Índice':'Contents','Volver al índice':'Back to contents','Marcadores':'Bookmarks','Ver marcadores de tiempo':'View time bookmarks','Guardar marcador':'Save bookmark','Página actual':'Current page','Ajustar al ancho':'Fit to width','Ajustar página completa':'Fit full page','Ancho':'Width','Página':'Page','Noche':'Night','Oscuro':'Dark','Claro':'Light','Buscar…':'Search…','Buscar en el libro':'Search in book','Buscar en PDF…':'Search PDF…','Buscar texto en el documento':'Search document text','Tema de lectura':'Reading theme','Tema':'Theme','Filtro de lectura':'Reading filter','Velocidad de reproducción':'Playback speed','Velocidad':'Speed','Anterior':'Previous','Siguiente':'Next','Reproducir / Pausar (Espacio)':'Play / Pause (Space)','Silenciar':'Mute','Silenciar (M)':'Mute (M)','Girar 90°':'Rotate 90°','Ajustar a la ventana':'Fit window','Ver a 2 páginas':'Two-page view','Reducir letra':'Smaller text','Aumentar letra':'Larger text','Ver dos páginas lado a lado (Doble página)':'Two pages side by side','Recientes abiertos':'Recently opened','Actividad reciente':'Recent activity','Más antiguos':'Oldest','Últimos abiertos':'Last opened','Mayor tamaño':'Largest first','Menor tamaño':'Smallest first','Alfabético A–Z':'Alphabetical A–Z','Orden natural':'Natural order','Todos los estados':'All statuses','Ordenar biblioteca':'Sort library','Gestionar etiquetas':'Manage tags','Cancelar':'Cancel','Mover a la papelera':'Move to trash','Eliminar elemento':'Delete item','Eliminar elementos':'Delete items','El elemento se moverá a la papelera de Drive. ¿Continuar?':'The item will move to Drive trash. Continue?','No hay resultados.':'No results.','Quitar autor':'Remove author','Renombrar':'Rename','Eliminar':'Delete','Estado de lectura':'Reading status','Fijado':'Pinned','Visible':'Visible','Calificación':'Rating','Idioma':'Language'
+};
+const UI_PHRASES_EXTRA={
+ 'Explorador':'Explorer','Elegir Biblioteca':'Choose Library','Elegir Explorador':'Choose Explorer','Desenfoque de Biblioteca':'Library blur','Opacidad de Biblioteca':'Library opacity','Desenfoque de Explorador':'Explorer blur','Opacidad de Explorador':'Explorer opacity','Sin fondo':'No wallpaper','Sin fondo para el destino seleccionado':'No wallpaper for selected area','+ Añadir imagen…':'+ Add image…','Modo claro':'Light mode','Modo oscuro':'Dark mode','Automático':'Automatic','FONDOS':'WALLPAPERS','Cargando fondos…':'Loading wallpapers…','Centrar imagen':'Center image','Eliminar fondo':'Delete wallpaper','Solo se pueden eliminar fondos añadidos':'Only added wallpapers can be deleted','Añadir etiqueta':'Add tag','Quitar de la selección':'Remove from selection','Compartida':'Shared','Aún no hay etiquetas.':'No tags yet.','Fijar en biblioteca':'Pin to library','Desfijar de biblioteca':'Unpin from library','Agregar a favoritos':'Add to favorites','Quitar de favoritos':'Remove from favorites','Ocultar de biblioteca':'Hide from library','Mostrar en biblioteca':'Show in library','Quitar de recientes':'Remove from recent','CALIFICACIÓN':'RATING','Opciones de portadas…':'Cover options…','Renderizar portada':'Render cover','Renderizar portadas':'Render covers','Renderizar aquí':'Render here','Usar Colab':'Use Colab','Abrir panel lateral':'Open details panel','Cerrar panel lateral':'Close details panel','Asignar a contenedor…':'Assign to container…','Extraer a la biblioteca':'Move to library','Cerrar pantalla dividida':'Close split screen','Ver marcadores':'View bookmarks','Ver marcadores de tiempo':'View time bookmarks','Guardar marcador en el segundo actual (B)':'Add bookmark at current time (B)','Guardar marcador (B)':'Add bookmark (B)','Repetir':'Repeat','Pantalla en pantalla (PiP)':'Picture in Picture (PiP)','Tu biblioteca empieza aquí':'Your library starts here','Sugerencias de etiquetas y autores':'Tag and author suggestions','Doble clic para abrir · clic derecho para cambiar portada':'Double-click to open · right-click to change cover','Doble clic o Enter para abrir archivo; clic derecho para cambiar portada':'Double-click or Enter to open; right-click to change cover','Eliminar de Drive':'Delete from Drive','Cancelar importación':'Cancel import','No hay resultados.':'No results.','Mostrar solo favoritos':'Show favorites only','Estado:':'Status:','No se pudo conectar con la biblioteca':'Could not connect to library','Sin conexión al escritorio':'Desktop disconnected','Título modificado':'Title updated','Error al modificar título':'Error updating title','Portada actualizada':'Cover updated','Búsqueda profunda activada':'Deep search enabled','Búsqueda profunda desactivada':'Deep search disabled','Quitado de recientes':'Removed from recent','Movido a la papelera de Drive':'Moved to Drive trash','Sincronizar biblioteca':'Sync library'
+};
+Object.assign(UI_PHRASES_EXTRA,{'Documentos':'Documents','Videos':'Videos','Imágenes':'Images','Otros archivos':'Other files','Archivo':'File','Doble página':'Two pages','Mostrar galería de contenidos':'Show content gallery','Colapsar galería':'Collapse gallery','Buscar contenido…':'Search content…','Galería de contenidos':'Content gallery'});
+const uiToEnglish=new Map(),uiToSpanish=new Map();
+for(const [key,spanish] of Object.entries(TRANSLATIONS.es)){const english=TRANSLATIONS.en[key];if(typeof spanish==='string'&&typeof english==='string'&&spanish!==english){uiToEnglish.set(spanish,english);uiToSpanish.set(english,spanish);}}
+for(const [spanish,english] of Object.entries(UI_PHRASES)){uiToEnglish.set(spanish,english);uiToSpanish.set(english,spanish);}
+for(const [spanish,english] of Object.entries(UI_PHRASES_EXTRA)){uiToEnglish.set(spanish,english);uiToSpanish.set(english,spanish);}
+function translateUiString(value){const trimmed=value.trim();if(!trimmed)return value;let translated=currentLang==='en'?(uiToEnglish.get(trimmed)||trimmed):(uiToSpanish.get(trimmed)||trimmed);if(translated===trimmed){const state=/^(Estado|Status): (.+)$/.exec(trimmed);if(state){const label=currentLang==='en'?(uiToEnglish.get(state[2])||state[2]):(uiToSpanish.get(state[2])||state[2]);translated=(currentLang==='en'?'Status: ':'Estado: ')+label;}}if(translated===trimmed){const patterns=currentLang==='en'?[[/^(\d+) elementos actualizados$/,'$1 items updated'],[/^(\d+) elementos seleccionados$/,'$1 items selected'],[/^(\d+) elementos movidos a la papelera de Drive$/,'$1 items moved to Drive trash'],[/^(\d+) elementos se moverán a la papelera de Drive\. ¿Continuar\?$/,'$1 items will move to Drive trash. Continue?'],[/^Copiado a Drive: (.+)$/,'Copied to Drive: $1'],[/^Comenzó la carga a Drive: (.+)$/,'Drive import started: $1'],[/^Cancelado: (.+)$/,'Cancelled: $1']]:[[/^(\d+) items updated$/,'$1 elementos actualizados'],[/^(\d+) items selected$/,'$1 elementos seleccionados'],[/^(\d+) items moved to Drive trash$/,'$1 elementos movidos a la papelera de Drive'],[/^(\d+) items will move to Drive trash\. Continue\?$/,'$1 elementos se moverán a la papelera de Drive. ¿Continuar?'],[/^Copied to Drive: (.+)$/,'Copiado a Drive: $1'],[/^Drive import started: (.+)$/,'Comenzó la carga a Drive: $1'],[/^Cancelled: (.+)$/,'Cancelado: $1']];for(const [pattern,replacement] of patterns){if(pattern.test(trimmed)){translated=trimmed.replace(pattern,replacement);break;}}}return translated===trimmed?value:value.replace(trimmed,translated);}
+function translateUiNode(node){if(node.nodeType===Node.TEXT_NODE){if(node.parentElement?.closest('.card-title,.cover-title,.player-title-text,.resource-name,.metadata-name,.author-chip,.tag-manager-chip,[contenteditable]'))return;const next=translateUiString(node.nodeValue);if(next!==node.nodeValue)node.nodeValue=next;return;}if(node.nodeType!==Node.ELEMENT_NODE)return;const element=node;if(element.matches('script,style,textarea,[contenteditable]'))return;for(const attr of ['title','aria-label','placeholder'])if(element.hasAttribute(attr)){const previous=element.getAttribute(attr),next=translateUiString(previous);if(next!==previous)element.setAttribute(attr,next);}const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);let textNode;while((textNode=walker.nextNode()))translateUiNode(textNode);for(const child of element.querySelectorAll('[title],[aria-label],[placeholder]'))translateUiNodeAttributes(child);}
+function translateUiNodeAttributes(element){for(const attr of ['title','aria-label','placeholder'])if(element.hasAttribute(attr)){const previous=element.getAttribute(attr),next=translateUiString(previous);if(next!==previous)element.setAttribute(attr,next);}}
+
+import {icon} from './icons.js?v=24';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const bytes=n=>n?`${(n/1024**(Math.min(3,Math.floor(Math.log(n)/Math.log(1024))))).toFixed(1)} ${['B','KB','MB','GB'][Math.min(3,Math.floor(Math.log(n)/Math.log(1024)))]}`:'—';
@@ -10,9 +304,10 @@ let filterTypes=[...defaultFilterTypes];try{const saved=JSON.parse(localStorage.
 const stateNames={pendiente:'Pendiente',interesado:'Interesado',leyendo:'Leyendo',leido:'Leído',abandonado:'Abandonado'};
 const typeIcons={documento:'document',contenedor:'package',video:'video',audio:'audio',imagen:'image',otro:'other'};
 const typeNames={documento:'Documentos',contenedor:'Contenedores',video:'Videos',audio:'Audio',imagen:'Imágenes',otro:'Otros archivos'};
-const S={profileId:'',loading:true,items:[],tokens:[],selected:null,pinned:false,showOverlays:true,mode:'local',theme:'auto',zoom:195,wallpaper:'',containerWallpaper:'',wallpaperTarget:1,wallpaperPositions:{},wallpaperOpacity:24,wallpaperBlur:18,containerBackgroundOpacity:100,containerBackgroundBlur:18,confirmDelete:true,view:'grid',revision:0,selectionRevision:0,rows:new Map(),covers:new Map(),pending:new Map(),saving:Promise.resolve(),course:null,resources:[],coursePath:[],courseFolderIds:new Map(),courseQuery:'',courseSelection:null,courseSelectionRevision:0,courseSelectedKeys:new Set(),courseAnchorKey:null,courseViewMode:'details',courseZoom:{grid:0,list:1},courseCovers:new Map(),bulkIds:new Set(),similarIds:null,languages:['Español','Inglés'],showRecentTitles:false,importing:false,importingJob:null,importCancelling:false};
+const S={profileId:'',loading:true,items:[],tokens:[],selected:null,pinned:false,showOverlays:true,mode:'balisco',theme:'auto',zoom:195,wallpaper:'',containerWallpaper:'',wallpaperTarget:1,wallpaperOpacity:24,wallpaperBlur:18,containerBackgroundOpacity:100,containerBackgroundBlur:18,wallpaperPositions:{},confirmDelete:true,view:'grid',revision:0,selectionRevision:0,rows:new Map(),covers:new Map(),pending:new Map(),saving:Promise.resolve(),course:null,resources:[],coursePath:[],courseFolderIds:new Map(),courseQuery:'',courseSelection:null,courseSelectionRevision:0,courseSelectedKeys:new Set(),courseAnchorKey:null,courseViewMode:'details',courseZoom:{grid:0,list:1},courseCovers:new Map(),bulkIds:new Set(),similarIds:null,languages:['Español','Inglés'],showRecentTitles:false,importing:false,importingJob:null,importCancelling:false};
 const profileStorageKey=key=>S.profileId?`${key}.perfil.${S.profileId}`:key;
 const importJobs=new Map();
+const recentImportIds=new Set();
 let importTab='file';
 let importNotice='';
 function setImportNotice(state){importNotice=state;$('imports').dataset.notice=state;}
@@ -22,7 +317,7 @@ function notify(message,kind='info',persistent=false,cancelId=null){const el=$('
 function guard(fn){return (...args)=>{try{return Promise.resolve(fn(...args)).catch(report);}catch(e){report(e);}};}
 function report(e){if(e.message==='Preferencia inválida')return;notify(e.message,'error');$('status').textContent='Revisa el aviso';}
 function button(name,label,id){return `<button class="icon-button" id="${id}"${label?` title="${label}"`:''} aria-label="${label}">${icon(name)}</button>`;}
-$('dock').innerHTML='<span id="summary" class="item-count" title="Elementos mostrados"></span><span class="divider"></span>'+button('tag','Metadatos y taxonomía','metadata')+button('heart','Mostrar solo favoritos','favorite')+button('status','Filtrar por estado','statusFilter')+button('star','Filtrar por calificación','rating')+button('filter','Filtrar por tipo','type')+button('sort','Ordenar biblioteca','sort')+'<span class="divider"></span>'+button('grid','Tamaño de la cuadrícula','zoom')+button('local','Modo de apertura: Local','mode')+button('dice','Buscar relacionados','dice')+button('similar','Buscar similares al elemento seleccionado','similar')+'<span class="divider"></span>'+button('refresh','Sincronizar biblioteca','sync')+button('download','Gestionar cargas','imports')+button('cloud','Mantenimiento de Google Drive','driveTools')+button('wallpaper','Fondo y tema','wallpaper')+button('details','Compactar panel de detalles','inspectorToggle')+button('winMin','Minimizar','winMin')+button('winMax','Maximizar','winMax')+button('winClose','Cerrar','winClose');
+$('dock').innerHTML='<span id="summary" class="item-count" title="Elementos mostrados"></span><span class="divider"></span>'+button('tag','Metadatos y taxonomía','metadata')+button('heart','Mostrar solo favoritos','favorite')+button('status','Filtrar por estado','statusFilter')+button('star','Filtrar por calificación','rating')+button('filter','Filtrar por tipo','type')+button('sort','Ordenar biblioteca','sort')+'<span class="divider"></span>'+button('grid','Tamaño de la cuadrícula','zoom')+button('balisco','Modo de apertura: Balisco','mode')+button('dice','Buscar relacionados','dice')+button('similar','Buscar similares al elemento seleccionado','similar')+'<span class="divider"></span>'+button('refresh','Sincronizar biblioteca','sync')+button('download','Gestionar cargas','imports')+button('cloud','Mantenimiento de Google Drive','driveTools')+button('wallpaper','Fondo y tema','wallpaper')+button('language',t('langTitle'),'langToggle')+button('details','Compactar panel de detalles','inspectorToggle')+button('winMin','Minimizar','winMin')+button('winMax','Maximizar','winMax')+button('winClose','Cerrar','winClose');
 const windowControls=document.createElement('div');windowControls.id='windowControls';windowControls.setAttribute('aria-label','Panel lateral y controles de ventana');document.querySelector('.toolbar').append(windowControls);
 function setToolbarPosition(position){const bottom=position==='bottom';document.body.classList.toggle('search-bottom',bottom);const searchBar=$('searchBar');if(bottom){document.body.append(searchBar);}else{document.querySelector('.toolbar').insertBefore(searchBar,$('dock'));}for(const id of ['inspectorToggle','winMin','winMax','winClose'])windowControls.append($(id));localStorage.setItem('balisco.toolbarPosition',bottom?'bottom':'top');$('popover').hidden=true;$('importPanel').hidden=true;hideTagSuggestions();popoverAnchor=null;requestAnimationFrame(scheduleDraw);}
 $('similar').hidden=true;
@@ -35,6 +330,64 @@ function windowState(maximized){
 }
 $('winMax').onclick=guard(async()=>{const r=await api('window_toggle_maximize');windowState(r?.maximized);});
 $('winClose').onclick=guard(()=>window.balisco.close());
+function updateLangButton() {
+ const btn = $('langToggle');
+ if (!btn) return;
+  btn.innerHTML = icon('language');
+ btn.title = t('langTitle');
+ btn.setAttribute('aria-label', btn.title);
+}
+
+function applyLanguage() {
+ document.documentElement.lang = currentLang;
+ updateLangButton();
+ if (typeof OPEN_MODE_META !== 'undefined') {
+  OPEN_MODE_META.balisco.title = currentLang === 'en' ? 'Open mode: Balisco (integrated player)' : 'Modo de apertura: Balisco (reproductor integrado)';
+  OPEN_MODE_META.local.title = currentLang === 'en' ? 'Open mode: Local (external app)' : 'Modo de apertura: Local (aplicación externa)';
+  OPEN_MODE_META.web.title = currentLang === 'en' ? 'Open mode: Drive (browser)' : 'Modo de apertura: Drive (navegador)';
+  if (typeof applyMode === 'function') applyMode();
+ }
+ $('metadata')?.setAttribute('title', t('tagTitle')); $('metadata')?.setAttribute('aria-label', t('tagTitle'));
+ $('favorite')?.setAttribute('title', t('favOnlyTitle')); $('favorite')?.setAttribute('aria-label', t('favOnlyTitle'));
+ $('statusFilter')?.setAttribute('title', t('statusFilterTitle')); $('statusFilter')?.setAttribute('aria-label', t('statusFilterTitle'));
+ $('rating')?.setAttribute('title', t('ratingTitle')); $('rating')?.setAttribute('aria-label', t('ratingTitle'));
+ $('type')?.setAttribute('title', t('typeTitle')); $('type')?.setAttribute('aria-label', t('typeTitle'));
+ $('sort')?.setAttribute('title', t('sortTitle')); $('sort')?.setAttribute('aria-label', t('sortTitle'));
+ $('dice')?.setAttribute('title', t('diceTitle')); $('dice')?.setAttribute('aria-label', t('diceTitle'));
+ $('similar')?.setAttribute('title', t('similarTitle')); $('similar')?.setAttribute('aria-label', t('similarTitle'));
+ $('sync')?.setAttribute('title', t('syncTitle')); $('sync')?.setAttribute('aria-label', t('syncTitle'));
+ $('imports')?.setAttribute('title', t('importsTitle')); $('imports')?.setAttribute('aria-label', t('importsTitle'));
+ $('driveTools')?.setAttribute('title', t('driveToolsTitle')); $('driveTools')?.setAttribute('aria-label', t('driveToolsTitle'));
+ $('wallpaper')?.setAttribute('title', t('wallpaperTitle')); $('wallpaper')?.setAttribute('aria-label', t('wallpaperTitle'));
+ $('inspectorToggle')?.setAttribute('title', t('inspectorToggleTitle')); $('inspectorToggle')?.setAttribute('aria-label', t('inspectorToggleTitle'));
+ $('winMin')?.setAttribute('title', t('winMinTitle')); $('winMin')?.setAttribute('aria-label', t('winMinTitle'));
+ $('winMax')?.setAttribute('title', t(maximizedState ? 'winRestoreTitle' : 'winMaxTitle')); $('winMax')?.setAttribute('aria-label', t(maximizedState ? 'winRestoreTitle' : 'winMaxTitle'));
+ $('winClose')?.setAttribute('title', t('winCloseTitle')); $('winClose')?.setAttribute('aria-label', t('winCloseTitle'));
+ $('searchToggle')?.setAttribute('title', t('searchToggleTitle')); $('searchToggle')?.setAttribute('aria-label', t('searchToggleTitle'));
+ $('ghost')?.setAttribute('placeholder', t('searchPlaceholder'));
+ $('ghost')?.setAttribute('title', t('searchBarTitle'));
+
+ COMMAND_SUGGESTIONS = currentLang === 'en' ? COMMAND_SUGGESTIONS_EN : COMMAND_SUGGESTIONS_ES;
+ READING_STATES = currentLang === 'en' ? READING_STATES_EN : READING_STATES_ES;
+ SORT_OPTIONS_MENU = currentLang === 'en' ? SORT_OPTIONS_MENU_EN : SORT_OPTIONS_MENU_ES;
+ COMMON_FORMATS = currentLang === 'en' ? COMMON_FORMATS_EN : COMMON_FORMATS_ES;
+
+ if (S.selected && typeof renderDetail === 'function') renderDetail(S.selected);
+  if ($('dialog')?.open && $('dialogTitle')?.querySelector('.help-header')) { $('dialog').close(); openHelpModal(); }
+  translateUiNode(document.body);
+  document.dispatchEvent(new Event('balisco-language'));
+}
+
+function toggleLanguage(next) {
+ currentLang = next || (currentLang === 'es' ? 'en' : 'es');
+ localStorage.setItem('balisco.language', currentLang);
+ applyLanguage();
+ notify(t('langSwitched'), 'success');
+}
+
+$('langToggle').onclick = () => toggleLanguage();
+updateLangButton();
+
 const toolbar=document.querySelector('.toolbar');
 const interactive='button,input,textarea,select,a,[contenteditable],.chip,#popover,[role="slider"]';
 toolbar.addEventListener('pointerdown', e => {
@@ -94,12 +447,12 @@ inspectorToggle.onclick=()=>setInspectorCompact(!$('inspector').classList.contai
 syncResponsiveInspector();
 narrowInspector.addEventListener('change',()=>{if(narrowInspector.matches)narrowInspectorOpened=false;syncResponsiveInspector();});
 function animateInspectorSelection(){const inspector=$('inspector');if(inspector.classList.contains('is-compact'))return;inspector.classList.remove('selection-change');void inspector.offsetWidth;inspector.classList.add('selection-change');}
-function art(item){const hue=[...item.drive_id].reduce((a,c)=>a+c.charCodeAt(0),0)%60+190,category=String(item.categoria_macro||'').toLocaleLowerCase(),labelOnly=category==='storage'||item.tipo_contenido==='contenedor';return `<div class="typography" style="--hue:${hue}"><div class="cover-category">${esc(item.categoria_macro||'Biblioteca')}</div>${labelOnly?'':`<div class="cover-title">${esc(item.titulo.replace(/\.(pdf|epub)$/i,''))}</div><div class="cover-rule"></div>`}</div>`;}
+function art(item){const hue=[...item.drive_id].reduce((a,c)=>a+c.charCodeAt(0),0)%60+190,category=String(item.categoria_macro||'').toLocaleLowerCase(),labelOnly=category==='storage'||item.tipo_contenido==='contenedor',isInbox=category==='_inbox'||String(item.ruta_relativa||'').toLocaleLowerCase().includes('_inbox'),label=isInbox?(item.formato||item.tipo_contenido||item.tipo||'').toUpperCase():(item.categoria_macro||(currentLang==='en'?'Library':'Biblioteca'));return `<div class="typography" style="--hue:${hue}"><div class="cover-category">${esc(label)}</div>${labelOnly?'':`<div class="cover-title">${esc(item.titulo.replace(/\.(pdf|epub)$/i,''))}</div><div class="cover-rule"></div>`}</div>`;}
 function setView(view){const previous=S.view;if(previous!=='course'&&view==='course'){S.libraryTokens=[...S.tokens];S.tokens=[];}else if(previous==='course'&&view!=='course'){S.tokens=[...(S.libraryTokens||[])];S.courseQuery='';}S.view=view;for(const [id,key] of [['viewport','grid'],['metadataView','metadata'],['courseView','course']])$(id).hidden=view!==key;$('viewTitle')&&($('viewTitle').textContent=view==='metadata'?'Metadatos':view==='course'?(S.course?.titulo||'Contenedor'):'Biblioteca');$('eyebrow')&&($('eyebrow').textContent=view==='course'?'RECURSOS':'TU ESPACIO DE CONOCIMIENTO');$('metadata').setAttribute('aria-pressed',String(view==='metadata'));if(view==='course'){$('details').hidden=!S.courseSelection?.detail?.item;$('courseInspector').hidden=true;$('inspectorEmpty').hidden=!!S.courseSelection;}else{$('courseInspector').hidden=true;if(view==='grid'){$('details').hidden=!S.selected;$('inspectorEmpty').hidden=!!S.selected;}}renderFilters();if(view==='grid')scheduleDraw();}
 function updateSummary(){$('summary').textContent=String(S.items.length);$('summary').title='Elementos mostrados';}
 function searchTokens(){const draft=$('ghost').hidden?'':$('ghost').value.trim();return draft&&!/^[+@-]/.test(draft)?[...S.tokens,draft]:S.tokens;}
 let lastQueriedTokensKey='';
-async function refresh(reset=false,reuseCards=false){if(S.view==='course'){renderFilters();renderResources();return;}const currentTokens=searchTokens(),currentKey=JSON.stringify(currentTokens);if(reuseCards&&currentKey===lastQueriedTokensKey&&!reset&&!S.similarIds)return;const rev=++S.revision;const result=await api('query',{tokens:currentTokens});if(rev!==S.revision)return;lastQueriedTokensKey=currentKey;if(S.similarIds){const byId=new Map(result.items.map(item=>[item.drive_id,item]));S.items=S.similarIds.map(id=>byId.get(id)).filter(Boolean);}else S.items=result.items;S.total=result.total;if(!reuseCards){S.rows.clear();$('canvas').replaceChildren();}if(reset)$('viewport').scrollTop=0;renderFilters();updateSummary();scheduleDraw();}
+async function refresh(reset=false,reuseCards=false){if(S.view==='course'){renderFilters();renderResources();return;}const currentTokens=searchTokens(),currentKey=JSON.stringify(currentTokens);if(reuseCards&&currentKey===lastQueriedTokensKey&&!reset&&!S.similarIds)return;const rev=++S.revision;const result=await api('query',{tokens:currentTokens});if(rev!==S.revision)return;lastQueriedTokensKey=currentKey;if(S.similarIds){const byId=new Map(result.items.map(item=>[item.drive_id,item]));S.items=S.similarIds.map(id=>byId.get(id)).filter(Boolean);}else S.items=result.items;if(recentImportIds.size&&!S.similarIds)S.items.sort((a,b)=>Number(recentImportIds.has(b.drive_id))-Number(recentImportIds.has(a.drive_id)));S.total=result.total;if(!reuseCards){S.rows.clear();$('canvas').replaceChildren();}if(reset)$('viewport').scrollTop=0;renderFilters();updateSummary();scheduleDraw();}
 function scheduleDraw(){if(!drawFrame)drawFrame=requestAnimationFrame(()=>{drawFrame=0;draw();});}
 function drawNow(){if(drawFrame){cancelAnimationFrame(drawFrame);drawFrame=0;}draw();requestAnimationFrame(draw);}
 let suppressCardClick=false,marquee=null,marqueeFrame=0,selectionAnchorId=null;
@@ -123,9 +476,27 @@ async function focusCardIndex(index,updateSelection=true){
  draw();S.rows.get(item.drive_id)?.focus({preventScroll:true});keyboardCardId=item.drive_id;
  if(updateSelection)await select(item.drive_id);
 }
+async function startCardTitleEdit(id){
+ if(!S.bulkIds.has(id))await select(id);
+ const item=S.items.find(entry=>entry.drive_id===id),card=S.rows.get(id),label=card?.querySelector('.card-title');if(!item||!card||!label)return;
+ const input=document.createElement('input');input.className='card-title-input';input.type='text';input.value=item.titulo;input.setAttribute('aria-label',currentLang==='en'?'Edit title':'Modificar título');label.replaceWith(input);
+ let finished=false;
+ const finish=guard(async save=>{if(finished)return;finished=true;const title=input.value.trim();if(!save||!title||title===item.titulo){input.replaceWith(label);card.focus({preventScroll:true});return;}try{const updated=await api('update',{id,field:'titulo',value:title});item.titulo=updated.titulo;if(S.selected?.drive_id===id){S.selected=updated;renderDetail(updated);}await refresh();notify(t('playerTitleSuccess'),'success');}catch(error){input.replaceWith(label);card.focus({preventScroll:true});throw error;}});
+ input.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();finish(true);}else if(e.key==='Escape'){e.preventDefault();finish(false);}};input.onblur=()=>finish(true);input.onclick=e=>e.stopPropagation();requestAnimationFrame(()=>{input.focus();input.select();});
+}
+async function openBulkTitleEdit(ids){
+ await flush();const items=await Promise.all(ids.map(id=>api('detail',{id})));
+ const dialog=document.createElement('dialog');dialog.className='bulk-rename-dialog';dialog.innerHTML=`<h2>${currentLang==='en'?'Rename selected items':'Renombrar seleccionados'}</h2><p>${currentLang==='en'?'Use {nombre} for the original title and {n} for a sequence number.':'Usa {nombre} para conservar el título original y {n} para numerar.'}</p><form><input type="text" value="{nombre}" maxlength="500" aria-label="${currentLang==='en'?'New title pattern':'Nuevo patrón de título'}"><div class="bulk-rename-preview"></div><div class="bulk-rename-actions"><button type="button" class="text-button" data-rename-cancel>${currentLang==='en'?'Cancel':'Cancelar'}</button><button type="submit" class="text-button primary-button">${currentLang==='en'?'Save titles':'Guardar títulos'}</button></div></form>`;document.body.append(dialog);
+ const input=dialog.querySelector('input'),preview=dialog.querySelector('.bulk-rename-preview');
+ const titles=()=>items.map((item,index)=>({id:item.drive_id,title:input.value.replaceAll('{nombre}',item.titulo).replaceAll('{n}',String(index+1).padStart(2,'0')).trim()}));
+ const render=()=>{preview.replaceChildren();for(const [index,entry] of titles().slice(0,6).entries()){const row=document.createElement('div');row.textContent=`${items[index].titulo} → ${entry.title||'—'}`;preview.append(row);}if(items.length>6){const more=document.createElement('small');more.textContent=currentLang==='en'?`and ${items.length-6} more…`:`y ${items.length-6} más…`;preview.append(more);}};
+ input.oninput=render;dialog.querySelector('[data-rename-cancel]').onclick=()=>dialog.close();dialog.addEventListener('close',()=>dialog.remove());
+ dialog.querySelector('form').onsubmit=guard(async e=>{e.preventDefault();const updates=titles();if(updates.some(entry=>!entry.title)){notify(currentLang==='en'?'Titles cannot be empty.':'Los títulos no pueden estar vacíos.','error');input.focus();return;}const changed=updates.filter((entry,index)=>entry.title!==items[index].titulo);if(!changed.length){dialog.close();return;}const button=dialog.querySelector('[type="submit"]');button.disabled=true;try{await api('bulk_rename',{updates:changed});const renamed=new Map(changed.map(entry=>[entry.id,entry.title]));for(const resource of S.resources)if(renamed.has(resource.id))resource.title=renamed.get(resource.id);if(S.courseSelection&&renamed.has(S.courseSelection.id))S.courseSelection.name=renamed.get(S.courseSelection.id);if(S.selected&&renamed.has(S.selected.drive_id)){S.selected=await api('detail',{id:S.selected.drive_id});renderDetail(S.selected);}dialog.close();await refresh();notify(currentLang==='en'?`${changed.length} titles updated`:`${changed.length} títulos actualizados`,'success');}finally{button.disabled=false;}});
+ render();dialog.showModal();requestAnimationFrame(()=>{input.focus();input.select();});
+}
 function card(item){const el=document.createElement('article'),authors=authorNames(item.autor),category=String(item.categoria_macro||'').toLocaleLowerCase();el.className='card'+(category==='storage'?' storage-card':'')+(item.tipo_contenido==='contenedor'?' container-card':'');el.tabIndex=0;el.dataset.state=item.estado_lectura||'pendiente';el.setAttribute('aria-label',item.titulo+(item.es_favorito?', favorito':''));el.ondragstart=e=>e.preventDefault();const type=({contenedor:'CONTENEDOR',documento:'DOCUMENTO',video:'VIDEO',audio:'AUDIO',imagen:'IMAGEN',otro:'ARCHIVO'})[item.tipo_contenido]||item.tipo_contenido?.toUpperCase()||item.tipo.toUpperCase();el.innerHTML=`<div class="cover">${art(item)}${item.fijado?`<span class="card-pin" title="Fijado">${icon('pin')}</span>`:''}</div><div class="card-info"><div class="card-title">${esc(item.titulo)}</div><div class="card-meta"><span class="card-type" title="${type}" aria-label="${type}">${type[0]}</span><span class="card-size">${esc(bytes(item.tamano_bytes))}</span>${item.es_favorito?`<span class="favorite-mark" title="Favorito">${icon('heart')}</span>`:''}${item.rating?`<span class="card-rating">${icon('star')} ${item.rating}</span>`:''}${authors.length?`<span class="card-author" title="${esc(authors.join(', '))}">· ${esc(authors[0])}${authors.length>1?' +'+(authors.length-1):''}</span>`:''}</div>${item.coincidencia_interna?.length?`<div class="internal-match" title="Coincidencia dentro del contenedor">Dentro: ${esc(item.coincidencia_interna.join(', '))}</div>`:''}</div>`;
  el.onfocus=()=>{keyboardCardId=item.drive_id;};
- el.onclick=guard(e=>{if(suppressCardClick){suppressCardClick=false;return;}const closedMenu=closeRepeatedItemActions(el);if(closedMenu){selectionAnchorId=item.drive_id;if(!S.bulkIds.has(item.drive_id))S.bulkIds=new Set([item.drive_id]);return select(item.drive_id,true,true);}if(e.shiftKey)return selectGridRange(item.drive_id,e.ctrlKey);selectionAnchorId=item.drive_id;if(e.ctrlKey)return toggleBulkSelection(item.drive_id);if(S.selected?.drive_id===item.drive_id){S.selected=null;S.bulkIds.clear();$('details').hidden=true;$('inspectorEmpty').hidden=false;updateBulkButton();scheduleDraw();return;}return select(item.drive_id);});el.ondblclick=guard(e=>e.ctrlKey||e.shiftKey?undefined:openItem(item));el.onkeydown=guard(e=>{if(e.target!==el)return;if(e.key==='Enter'){e.preventDefault();return e.ctrlKey?toggleBulkSelection(item.drive_id):openItem(item);}if(e.key===' '){e.preventDefault();selectionAnchorId=item.drive_id;return e.ctrlKey?toggleBulkSelection(item.drive_id):e.shiftKey?selectGridRange(item.drive_id):select(item.drive_id);}if(e.key==='F2'){e.preventDefault();el.querySelector('.state-button')?.focus();}});
+ el.onclick=guard(e=>{if(suppressCardClick){suppressCardClick=false;return;}const closedMenu=closeRepeatedItemActions(el);if(closedMenu){selectionAnchorId=item.drive_id;if(!S.bulkIds.has(item.drive_id))S.bulkIds=new Set([item.drive_id]);return select(item.drive_id,true,true);}if(e.shiftKey)return selectGridRange(item.drive_id,e.ctrlKey);selectionAnchorId=item.drive_id;if(e.ctrlKey)return toggleBulkSelection(item.drive_id);if(S.selected?.drive_id===item.drive_id){S.selected=null;S.bulkIds.clear();$('details').hidden=true;$('inspectorEmpty').hidden=false;updateBulkButton();scheduleDraw();return;}return select(item.drive_id);});el.ondblclick=guard(e=>e.ctrlKey||e.shiftKey?undefined:openItem(item));el.onkeydown=guard(e=>{if(e.target!==el)return;if(e.key==='Enter'){e.preventDefault();return e.ctrlKey?toggleBulkSelection(item.drive_id):openItem(item);}if(e.key===' '){e.preventDefault();selectionAnchorId=item.drive_id;return e.ctrlKey?toggleBulkSelection(item.drive_id):e.shiftKey?selectGridRange(item.drive_id):select(item.drive_id);}});
  el.oncontextmenu=guard(async e=>{e.preventDefault();if(closeRepeatedItemActions(el))return;const point={x:e.clientX,y:e.clientY};if(!S.bulkIds.has(item.drive_id)){S.bulkIds=new Set([item.drive_id]);await select(item.drive_id,true,true);}await openItemActions(el,[...S.bulkIds],false,point);});loadCover(item.drive_id).then(src=>{if(src){coverCache.set(item.drive_id,src);if(el.isConnected){const img=new Image();img.src=src;img.decoding='async';img.alt='';el.querySelector('.cover').prepend(img);el.querySelector('.typography').hidden=true;}}}).catch(()=>{});return el;}
 let coverQueue=[],coverActive=0;
 const coverCache=new Map();
@@ -254,6 +625,15 @@ let tagCatalog=null,tagCatalogAt=0,tagCatalogPromise=null,authorCatalog=null,aut
 const foldText=value=>String(value??'').normalize('NFD').replace(/\p{M}/gu,'').replace(/[\s_-]+/g,' ').trim().toLocaleLowerCase();
 async function loadTagCatalog(force=false){if(!force&&tagCatalog&&Date.now()-tagCatalogAt<30000)return tagCatalog;if(!tagCatalogPromise)tagCatalogPromise=api('tag_suggestions');try{tagCatalog=await tagCatalogPromise;tagCatalogAt=Date.now();return tagCatalog;}finally{tagCatalogPromise=null;}}
 async function loadAuthorCatalog(){if(authorCatalog)return authorCatalog;if(!authorCatalogPromise)authorCatalogPromise=api('authors');try{authorCatalog=await authorCatalogPromise;return authorCatalog;}finally{authorCatalogPromise=null;}}
+function wireMetadataSuggestions(input,kind,onChoose){
+ const menu=document.createElement('div');menu.className='metadata-suggestions';menu.setAttribute('role','listbox');menu.hidden=true;(input.closest('dialog')||document.body).append(menu);
+ let entries=[],active=-1,revision=0;
+ const close=()=>{revision++;menu.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');};
+ const position=()=>{if(menu.hidden)return;const rect=input.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(rect.left,innerWidth-220))+'px';menu.style.top=Math.min(innerHeight-menu.offsetHeight-8,rect.bottom+4)+'px';menu.style.minWidth=Math.max(220,rect.width)+'px';};
+ const highlight=()=>{menu.querySelectorAll('[role="option"]').forEach((node,index)=>{node.classList.toggle('active',index===active);node.setAttribute('aria-selected',String(index===active));});if(active>=0)input.setAttribute('aria-activedescendant',menu.children[active].id);};
+ const update=async()=>{const rev=++revision,source=kind==='tag'?await loadTagCatalog():await loadAuthorCatalog();if(rev!==revision||!input.isConnected||document.activeElement!==input)return;const needle=foldText(input.value.replace(/^\+/,'')),recent=getRecentTagMap();entries=source.filter(row=>foldText(kind==='tag'?row.tag:row.author).includes(needle)).sort((a,b)=>{const aKey=String(kind==='tag'?a.tag:a.author).toLowerCase(),bKey=String(kind==='tag'?b.tag:b.author).toLowerCase(),aRecent=kind==='tag'?(recent[aKey]||a.recent||''):'',bRecent=kind==='tag'?(recent[bKey]||b.recent||''):'';return bRecent.localeCompare(aRecent)||(b.total||0)-(a.total||0)||aKey.localeCompare(bKey);}).slice(0,8);active=-1;menu.replaceChildren();entries.forEach((row,index)=>{const option=document.createElement('button');option.type='button';option.id=`metadataSuggestion-${kind}-${index}`;option.setAttribute('role','option');option.setAttribute('aria-selected','false');option.textContent=(kind==='tag'?row.tag:row.author)+` · ${row.total||0}`;option.onpointerdown=e=>e.preventDefault();option.onclick=guard(async()=>{await onChoose(kind==='tag'?row.tag:row.author);close();});menu.append(option);});menu.hidden=!entries.length;input.setAttribute('aria-expanded',String(entries.length>0));position();};
+ input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-expanded','false');input.addEventListener('focus',()=>guard(update)());input.addEventListener('input',()=>guard(update)());input.addEventListener('keydown',e=>{if(e.key==='Escape'){close();e.stopPropagation();return;}if(menu.hidden)return;if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();active=(active+(e.key==='ArrowDown'?1:-1)+entries.length)%entries.length;highlight();}else if(e.key==='Enter'&&active>=0){e.preventDefault();e.stopPropagation();menu.children[active]?.click();}});input.addEventListener('blur',()=>setTimeout(close,120));window.addEventListener('resize',position);window.addEventListener('scroll',position,true);return {close,remove:()=>{close();menu.remove();}};
+}
 function hideTagSuggestions(){tagSuggestionRevision++;tagMatches=[];tagSuggestionIndex=-1;$('tagSuggestions').hidden=true;$('ghost').setAttribute('aria-expanded','false');$('ghost').removeAttribute('aria-activedescendant');}
 
 function positionTagSuggestions(){
@@ -292,7 +672,7 @@ function positionTagSuggestions(){
   }
 }
 
-const COMMAND_SUGGESTIONS = [
+const COMMAND_SUGGESTIONS_ES = [
   {cmd: '@estado:', desc: 'Filtrar por estado (leido, leyendo, pendiente…)', keywords: ['estado', 'estados', 'leyendo', 'leido', 'pendiente', 'status']},
   {cmd: '@autor:', desc: 'Filtrar por autor de la biblioteca', keywords: ['autor', 'autores', 'author', 'creador', 'escritor']},
   {cmd: '@idioma:', desc: 'Filtrar libros por idioma (español, inglés…)', keywords: ['idioma', 'idiomas', 'lenguaje', 'lang', 'language']},
@@ -312,7 +692,29 @@ const COMMAND_SUGGESTIONS = [
   {cmd: '.help', desc: 'Abrir ventana de ayuda y comandos', keywords: ['help', 'ayuda', 'comandos', '?']}
 ];
 
-const READING_STATES = [
+const COMMAND_SUGGESTIONS_EN = [
+  {cmd: '@status:', desc: 'Filter by reading status (read, reading, pending…)', keywords: ['status', 'reading', 'read', 'pending', 'estado']},
+  {cmd: '@author:', desc: 'Filter by library author', keywords: ['author', 'writer', 'creator', 'autor']},
+  {cmd: '@lang:', desc: 'Filter books by language (english, spanish…)', keywords: ['lang', 'language', 'idioma']},
+  {cmd: '@sort:', desc: 'Sort by recent, size, alphabetical…', keywords: ['sort', 'order', 'size', 'recent', 'alphabetical']},
+  {cmd: '@format:', desc: 'Filter by format (pdf, epub, cbz…)', keywords: ['format', 'fmt', 'extension', 'pdf', 'epub']},
+  {cmd: '@rating:', desc: 'Filter by stars (1 to 5)', keywords: ['rating', 'stars', 'score']},
+  {cmd: '@languages', desc: 'Manage available languages', keywords: ['languages', 'lang', 'idiomas']},
+  {cmd: '@bar', desc: 'Move search bar top / bottom', keywords: ['bar', 'toolbar', 'move', 'top', 'bottom']},
+  {cmd: '@recent:titles', desc: 'Toggle titles in recent searches', keywords: ['titles', 'recent', 'history']},
+  {cmd: '@favorites', desc: 'Show favorite books only', keywords: ['favorites', 'fav', 'starred']},
+  {cmd: '@recent', desc: 'Show recently opened books', keywords: ['recent', 'history', 'last']},
+  {cmd: '@hidden', desc: 'Show hidden books and files', keywords: ['hidden', 'oculto', 'invisible']},
+  {cmd: '@size:', desc: 'Filter by file size (e.g. >50mb, <1gb)', keywords: ['size', 'weight', 'mb', 'gb']},
+  {cmd: '@with:notes', desc: 'Books with notes or annotations', keywords: ['notes', 'annotations']},
+  {cmd: '@without:cover', desc: 'Books without custom cover', keywords: ['without cover', 'cover', 'nocover']},
+  {cmd: '@confirm:delete', desc: 'Toggle delete confirmation prompt', keywords: ['confirm', 'delete', 'remove']},
+  {cmd: '.help', desc: 'Open help and commands modal', keywords: ['help', 'commands', '?']}
+];
+
+let COMMAND_SUGGESTIONS = currentLang === 'en' ? COMMAND_SUGGESTIONS_EN : COMMAND_SUGGESTIONS_ES;
+
+const READING_STATES_ES = [
   {id: 'pendiente', label: 'Pendiente', desc: 'Por leer o en espera'},
   {id: 'interesado', label: 'Interesado', desc: 'En lista de deseos / para revisar'},
   {id: 'leyendo', label: 'Leyendo', desc: 'En progreso de lectura'},
@@ -320,7 +722,17 @@ const READING_STATES = [
   {id: 'abandonado', label: 'Abandonado', desc: 'Lectura descartada'}
 ];
 
-const SORT_OPTIONS_MENU = [
+const READING_STATES_EN = [
+  {id: 'pendiente', label: 'Pending', desc: 'To read or on hold'},
+  {id: 'interesado', label: 'Interested', desc: 'Wishlist / to review'},
+  {id: 'leyendo', label: 'Reading', desc: 'Currently reading'},
+  {id: 'leido', label: 'Read', desc: 'Reading completed'},
+  {id: 'abandonado', label: 'Dropped', desc: 'Dropped / set aside'}
+];
+
+let READING_STATES = currentLang === 'en' ? READING_STATES_EN : READING_STATES_ES;
+
+const SORT_OPTIONS_MENU_ES = [
   {key: 'recientes', label: 'Recientes', desc: 'Por acceso más reciente'},
   {key: 'peso', label: 'Peso / Tamaño', desc: 'Mayor tamaño a menor'},
   {key: 'alfabetico', label: 'Alfabético', desc: 'De la A a la Z por título'},
@@ -328,7 +740,17 @@ const SORT_OPTIONS_MENU = [
   {key: 'abiertos', label: 'Abiertos / Lectura', desc: 'Por estado de lectura'}
 ];
 
-const COMMON_FORMATS = [
+const SORT_OPTIONS_MENU_EN = [
+  {key: 'recientes', label: 'Recent', desc: 'By most recent access'},
+  {key: 'peso', label: 'Size / Weight', desc: 'Largest to smallest'},
+  {key: 'alfabetico', label: 'Alphabetical', desc: 'A to Z by title'},
+  {key: 'antiguos', label: 'Oldest', desc: 'By oldest date'},
+  {key: 'abiertos', label: 'Reading State', desc: 'By reading status'}
+];
+
+let SORT_OPTIONS_MENU = currentLang === 'en' ? SORT_OPTIONS_MENU_EN : SORT_OPTIONS_MENU_ES;
+
+const COMMON_FORMATS_ES = [
   {fmt: 'pdf', desc: 'Documento PDF'},
   {fmt: 'epub', desc: 'Libro electrónico EPUB'},
   {fmt: 'cbz', desc: 'Cómic digital CBZ'},
@@ -340,6 +762,21 @@ const COMMON_FORMATS = [
   {fmt: 'zip', desc: 'Archivo comprimido ZIP'},
   {fmt: 'rar', desc: 'Archivo comprimido RAR'}
 ];
+
+const COMMON_FORMATS_EN = [
+  {fmt: 'pdf', desc: 'PDF Document'},
+  {fmt: 'epub', desc: 'EPUB E-book'},
+  {fmt: 'cbz', desc: 'CBZ Digital Comic'},
+  {fmt: 'cbr', desc: 'CBR Digital Comic'},
+  {fmt: 'mobi', desc: 'MOBI Kindle Book'},
+  {fmt: 'azw3', desc: 'AZW3 Kindle Book'},
+  {fmt: 'mp4', desc: 'MP4 Video'},
+  {fmt: 'mp3', desc: 'MP3 Audio'},
+  {fmt: 'zip', desc: 'ZIP Archive'},
+  {fmt: 'rar', desc: 'RAR Archive'}
+];
+
+let COMMON_FORMATS = currentLang === 'en' ? COMMON_FORMATS_EN : COMMON_FORMATS_ES;
 
 function getCommandMatches(text){
   const clean=String(text||'').trim().toLowerCase();
@@ -813,35 +1250,35 @@ async function commitGhost(value){
   clearTimeout(ghostTimer);
   const text=(value??$('ghost').value).trim();
   const low=text.toLowerCase();
-  if(low==='.help'){ghostHide();openHelpModal();return;}
-  if(low==='@confirmar:suprimir'){
+  if(low==='.help'||low==='.ayuda'||low==='help'||low==='ayuda'){ghostHide();openHelpModal();return;}
+  if(low==='@confirmar:suprimir'||low==='@confirm:delete'){
     ghostHide();
     const enabled=!S.confirmDelete;
     await api('preference',{key:'confirm_delete',value:String(enabled)});
     S.confirmDelete=enabled;
-    notify(enabled?'Confirmación de Suprimir activada':'Confirmación de Suprimir desactivada');
+    notify(enabled?t('confirmDeleteOn'):t('confirmDeleteOff'));
     return;
   }
-  if(low.startsWith('@orden:')){
+  if(low.startsWith('@orden:')||low.startsWith('@sort:')){
     ghostHide();
-    await applySort(text.slice(7));
+    await applySort(text.slice(text.indexOf(':')+1));
     return;
   }
-  if(['idiomas','@idiomas','.idiomas','/idiomas'].includes(low)){
+  if(['idiomas','@idiomas','.idiomas','/idiomas','languages','@languages','.languages','/languages'].includes(low)){
     ghostHide();openLanguagesModal();return;
   }
-  if(['@recientes:titulos','@titulos:recientes','@historial:titulos'].includes(low)){
+  if(['@recientes:titulos','@titulos:recientes','@historial:titulos','@recent:titles','@titles:recent'].includes(low)){
     ghostHide();
     S.showRecentTitles=!S.showRecentTitles;
     await api('preference',{key:'show_recent_titles',value:String(S.showRecentTitles)});
     localStorage.setItem('balisco.showRecentTitles',String(S.showRecentTitles));
-    notify(S.showRecentTitles?'Títulos en búsquedas recientes: Activados':'Títulos en búsquedas recientes: Desactivados (solo etiquetas y comandos)');
+    notify(S.showRecentTitles?t('recentTitlesOn'):t('recentTitlesOff'));
     return;
   }
-  if(low==='@barra'){
+  if(low==='@barra'||low==='@bar'){
     ghostHide();
     setToolbarPosition(document.body.classList.contains('search-bottom')?'top':'bottom');
-    notify(document.body.classList.contains('search-bottom')?'Búsqueda abajo':'Búsqueda arriba');
+    notify(document.body.classList.contains('search-bottom')?t('barMovedDown'):t('barMovedUp'));
     return;
   }
   if(S.view==='course'){
@@ -875,7 +1312,7 @@ async function commitGhost(value){
   if(S.tokens.includes(text)){await refresh(true);return;}
   try{await addToken(text);}catch(error){ghostShow(text);throw error;}
 }
-document.addEventListener('keydown',guard(async e=>{const editing=e.target instanceof Element && e.target.matches('input,textarea,select,[contenteditable=true]');if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'&&!$('dialog').open){e.preventDefault();ghostShow();return;}if(e.key==='Escape'){if($('dialog').open){e.preventDefault();$('dialog').close();return;}if(e.target instanceof Element&&e.target.closest('#filters .chip')){e.preventDefault();e.target.blur();return;}if(!$('ghost').hidden){e.preventDefault();ghostHide();$('searchToggle').focus();await refresh(true);return;}if(editing){e.target.blur();return;}$('popover').hidden=true;S.tokens=[];await flush();if(S.view==='course'){S.courseQuery='';renderResources();return;}setView('grid');await refresh(true);return;}if($('dialog').open||editing)return;if(e.key==='Enter'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!(e.target instanceof Element&&e.target.closest('button,.card,[role=button]'))){e.preventDefault();ghostShow();return;}if(!e.metaKey&&(e.key==='@'||((e.ctrlKey&&e.altKey||e.getModifierState?.('AltGraph'))&&['KeyQ','Digit2'].includes(e.code)))){e.preventDefault();ghostShow('@');return;}if(e.ctrlKey||e.metaKey||e.altKey||e.key.length!==1)return;if(e.key==='/'||/[\p{L}\p{N}+@-]/u.test(e.key)){e.preventDefault();ghostShow(e.key==='/'?'':e.key);}}));
+document.addEventListener('keydown',guard(async e=>{if(!$('baliscoPlayer')?.hidden)return;const editing=e.target instanceof Element && e.target.matches('input,textarea,select,[contenteditable=true]');if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'&&!$('dialog').open){e.preventDefault();ghostShow();return;}if(e.key==='Escape'){if($('dialog').open){e.preventDefault();$('dialog').close();return;}if(e.target instanceof Element&&e.target.closest('#filters .chip')){e.preventDefault();e.target.blur();return;}if(!$('ghost').hidden){e.preventDefault();ghostHide();$('searchToggle').focus();await refresh(true);return;}if(editing){e.target.blur();return;}$('popover').hidden=true;S.tokens=[];await flush();if(S.view==='course'){S.courseQuery='';renderResources();return;}setView('grid');await refresh(true);return;}if($('dialog').open||editing)return;if(e.key==='Enter'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!(e.target instanceof Element&&e.target.closest('button,.card,[role=button]'))){e.preventDefault();ghostShow();return;}if(!e.metaKey&&(e.key==='@'||((e.ctrlKey&&e.altKey||e.getModifierState?.('AltGraph'))&&['KeyQ','Digit2'].includes(e.code)))){e.preventDefault();ghostShow('@');return;}if(e.ctrlKey||e.metaKey||e.altKey||e.key.length!==1)return;if(e.key==='/'||/[\p{L}\p{N}+@-]/u.test(e.key)){e.preventDefault();ghostShow(e.key==='/'?'':e.key);}}));
 $('ghost').onkeydown=guard(async e=>{
   if((e.key==='ArrowLeft'||e.key==='ArrowRight')&&!$('ghost').value&&S.tokens.length){
     e.preventDefault();
@@ -938,10 +1375,87 @@ $('dialog').addEventListener('click',e=>{
 });
 function openHelpModal(){
  const dialog=$('dialog');if(dialog.open)return;if(document.activeElement instanceof HTMLElement)document.activeElement.blur();
- $('dialogTitle').innerHTML='<div class="help-header"><span class="help-title">Guía de Comandos y Filtros</span><button type="button" class="help-close-btn" id="helpCloseBtn" onclick="document.getElementById(\'dialog\').close()" aria-label="Cerrar modal" title="Cerrar (Escape)">✕</button></div>';
+ const isEn = currentLang === 'en';
+ $('dialogTitle').innerHTML=`<div class="help-header"><span class="help-title">${isEn ? 'Command & Filter Guide' : 'Guía de Comandos y Filtros'}</span><button type="button" class="help-close-btn" id="helpCloseBtn" onclick="document.getElementById('dialog').close()" aria-label="${isEn ? 'Close modal' : 'Cerrar modal'}" title="${isEn ? 'Close (Escape)' : 'Cerrar (Escape)'}">✕</button></div>`;
  const closeBtn=$('dialogTitle').querySelector('#helpCloseBtn');
  if(closeBtn)closeBtn.onclick=e=>{e.preventDefault();e.stopPropagation();dialog.close();};
- const sections=[
+ const sections = isEn ? [
+  {
+   title:'Star Rating',
+   items:[
+    {cmd:'@rating:1-3',desc:'Rating range from 1 to 3 stars'},
+    {cmd:'@rating:>=4',desc:'4 stars or higher (or 4+)'},
+    {cmd:'@rating:<=2',desc:'2 stars or fewer'},
+    {cmd:'@rating:1,3,5',desc:'Exact star ratings'},
+    {cmd:'@rating:none',desc:'Unrated books (or @rating:0)'}
+   ]
+  },
+  {
+   title:'Types & Formats',
+   items:[
+    {cmd:'@type:document,video',desc:'Multiple types at once'},
+    {cmd:'@type:container',desc:'Containers & courses only'},
+    {cmd:'@format:epub,pdf',desc:'Filter by file extension'},
+    {cmd:'@fmt:mkv',desc:'Short format alias'}
+   ]
+  },
+  {
+   title:'Size & Weight',
+   items:[
+    {cmd:'@size:>100mb',desc:'Files larger than 100 MB'},
+    {cmd:'@size:<10mb',desc:'Files smaller than 10 MB'},
+    {cmd:'@size:50mb-200mb',desc:'Specific size range'},
+    {cmd:'@size:>1gb',desc:'Files larger than 1 GB'}
+   ]
+  },
+  {
+   title:'Tags & Authors',
+   items:[
+    {cmd:'+tag',desc:'Include tag (recent first)'},
+    {cmd:'-tag',desc:'Exclude tag'},
+    {cmd:'+art|music',desc:'Tag art OR music'},
+    {cmd:'@author:name',desc:'Search by author'}
+   ]
+  },
+  {
+   title:'Reading Statuses',
+   items:[
+    {cmd:'@pending',desc:'Pending items to read'},
+    {cmd:'@reading',desc:'Currently reading items'},
+    {cmd:'@read',desc:'Completed items'},
+    {cmd:'@status:pending,reading',desc:'Multiple reading statuses'},
+    {cmd:'@!read',desc:'Exclude status (or -@read)'}
+   ]
+  },
+  {
+   title:'Maintenance & Quick Filters',
+   items:[
+    {cmd:'@without:cover',desc:'Without custom cover or thumb'},
+    {cmd:'@with:cover',desc:'With custom cover or thumb'},
+    {cmd:'@without:tags',desc:'Files without tags'},
+    {cmd:'@with:tags',desc:'Files with tags'},
+    {cmd:'@without:notes',desc:'Files without notes'},
+    {cmd:'@with:notes',desc:'Files with notes or highlights'},
+    {cmd:'@with:tracking',desc:'Favorite, rated, reading state or notes'},
+    {cmd:'@without:author',desc:'Files without author'},
+    {cmd:'@favorites',desc:'Your favorite items'},
+    {cmd:'@recent',desc:'Recently opened files'},
+    {cmd:'@hidden',desc:'Show hidden files and books'}
+   ]
+  },
+  {
+   title:'Shortcuts & System Commands',
+   items:[
+    {cmd:'@languages',desc:'Manage available languages'},
+    {cmd:'@recent:titles',desc:'Toggle titles in recent searches'},
+    {cmd:'@bar',desc:'Toggle search bar top / bottom'},
+    {cmd:'@confirm:delete',desc:'Enable or disable delete confirmation'},
+    {cmd:'@sort:size',desc:'Sort by largest size'},
+    {cmd:'@sort:recent',desc:'Sort by most recent'},
+    {cmd:'.help',desc:'Open this help window'}
+   ]
+  }
+ ] : [
   {
    title:'Calificación (Rating)',
    items:[
@@ -1018,7 +1532,7 @@ function openHelpModal(){
    ]
   }
  ];
- let html='<p class="help-lead">Haz clic en cualquier comando para aplicarlo directamente en el buscador:</p><div class="help-dialog-body">';
+ let html=`<p class="help-lead">${isEn ? 'Click any command to apply it directly to search:' : 'Haz clic en cualquier comando para aplicarlo directamente en el buscador:'}</p><div class="help-dialog-body">`;
  for(const sec of sections){
   html+=`<div class="help-section"><div class="help-section-title">${esc(sec.title)}</div><div class="help-grid">`;
   for(const item of sec.items){
@@ -1057,6 +1571,18 @@ function pop(anchor){const el=$('popover');clearTimeout(popoverCloseTimer);popov
 function closeRepeatedItemActions(anchor){const el=$('popover');if(el.hidden||popoverAnchor!==anchor||!el.classList.contains('item-actions'))return false;popoverAnchor=null;el.classList.add('is-closing');clearTimeout(popoverCloseTimer);popoverCloseTimer=setTimeout(()=>{el.hidden=true;el.classList.remove('is-closing');popoverCloseTimer=null;},250);return true;}
 $('popover').addEventListener('contextmenu',e=>{if(!$('popover').classList.contains('item-actions'))return;e.preventDefault();e.stopPropagation();if(popoverAnchor)closeRepeatedItemActions(popoverAnchor);});
 function positionToolbarPopover(el,anchor){const rect=anchor.getBoundingClientRect(),left=Math.max(8,Math.min(rect.left,innerWidth-el.offsetWidth-8)),below=rect.bottom+6;el.style.left=left+'px';el.style.right='auto';el.style.top=(below+el.offsetHeight>innerHeight-8?Math.max(8,rect.top-el.offsetHeight-6):below)+'px';}
+async function openTagManager(ids){
+ if(!ids.length)return;
+ const dialog=document.createElement('dialog');dialog.className='tag-manager-dialog';
+ dialog.innerHTML=`<div class="tag-manager-head"><h2>${currentLang==='en'?'Manage tags':'Gestionar etiquetas'}</h2><button type="button" class="icon-button" data-tag-close aria-label="${currentLang==='en'?'Close':'Cerrar'}">${icon('close')}</button></div><p class="tag-manager-summary"></p><div class="tag-manager-list"></div><form class="tag-manager-form"><input type="text" autocomplete="off" placeholder="${currentLang==='en'?'Add tag':'Añadir etiqueta'}" aria-label="${currentLang==='en'?'Add tag':'Añadir etiqueta'}"><button type="submit" class="text-button">${currentLang==='en'?'Add':'Añadir'}</button></form>`;
+ document.body.append(dialog);const list=dialog.querySelector('.tag-manager-list'),input=dialog.querySelector('input');
+ const render=async()=>{const result=await api('selection_tags',{ids});dialog.querySelector('.tag-manager-summary').textContent=ids.length>1?(currentLang==='en'?`${ids.length} selected items · shared tags appear first`:`${ids.length} elementos seleccionados · etiquetas compartidas primero`):'';list.replaceChildren();for(const row of result.tags){const chip=document.createElement('div');chip.className='tag-manager-chip';chip.dataset.scope=row.count===ids.length?'shared':'partial';const name=document.createElement('span');name.textContent=row.tag;const scope=document.createElement('small');scope.textContent=ids.length>1?row.count===ids.length?(currentLang==='en'?'Shared':'Compartida'):`${row.count}/${ids.length}`:'';const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title=currentLang==='en'?'Remove from selection':'Quitar de la selección';remove.setAttribute('aria-label',`${remove.title}: ${row.tag}`);remove.onclick=guard(async()=>{remove.disabled=true;await mutate('remove',row.tag);});chip.append(name,scope,remove);list.append(chip);}if(!result.tags.length)list.textContent=currentLang==='en'?'No tags yet.':'Aún no hay etiquetas.';};
+ const mutate=async(operation,value)=>{await api('bulk_metadata',{ids,field:'etiquetas',operation,value});tagCatalog=null;if(operation==='add')recordRecentTag(value);const selectedIds=new Set(ids),tag='+'+value.replace(/^\+/,'').toLocaleLowerCase();for(const row of S.resources)if(selectedIds.has(row.id)){const tags=String(row.etiquetas||'').split(/\s+/).filter(Boolean);if(operation==='add'&&!tags.some(entry=>entry.toLocaleLowerCase()===tag))tags.push(tag);if(operation==='remove')row.etiquetas=tags.filter(entry=>entry.toLocaleLowerCase()!==tag).join(' ');else row.etiquetas=tags.join(' ');}if(S.selected&&ids.includes(S.selected.drive_id)){S.selected=await api('detail',{id:S.selected.drive_id});renderDetail(S.selected);}await refresh();await render();};
+ const add=async value=>{const tag=value.trim().replace(/^\+/,'');if(!tag)return;await mutate('add',tag);input.value='';input.focus();};
+ const suggestions=wireMetadataSuggestions(input,'tag',add);
+ const onLanguage=guard(async()=>{dialog.querySelector('h2').textContent=currentLang==='en'?'Manage tags':'Gestionar etiquetas';await render();});document.addEventListener('balisco-language',onLanguage);
+ dialog.querySelector('[data-tag-close]').onclick=()=>dialog.close();dialog.querySelector('form').onsubmit=guard(async e=>{e.preventDefault();await add(input.value);});dialog.addEventListener('close',()=>{document.removeEventListener('balisco-language',onLanguage);suggestions.remove();dialog.remove();});await render();dialog.showModal();input.focus();
+}
 async function openItemActions(anchor,ids,course=false,point=null){
  if(!ids.length&&!course)return;
  let first=null;if(ids.length){try{first=await api('detail',{id:ids[0]});}catch(error){if(!course)throw error;}}
@@ -1071,10 +1597,10 @@ async function openItemActions(anchor,ids,course=false,point=null){
  el.innerHTML=(selectionCount>1?`<div class="item-actions-heading">${selectionCount} elementos seleccionados</div>`:'')+
    (first?`<div class="item-actions-group">${choice('pin','pin',properties.fijado===1?'Desfijar de biblioteca':'Fijar en biblioteca',properties.fijado===1)}${choice('favorite','heart',properties.es_favorito===1?'Quitar de favoritos':'Agregar a favoritos',properties.es_favorito===1)}${choice('visible',properties.oculto===0?'eyeOff':'eye',properties.oculto===0?'Ocultar de biblioteca':'Mostrar en biblioteca')}${recentAvailable?choice('remove-recent','recentOff','Quitar de recientes'):''}</div>`+
    `<div class="item-actions-group"><div class="item-actions-label">CALIFICACIÓN</div><div class="item-actions-rating">${Array.from({length:5},(_,i)=>`<button type="button" data-item-rating="${i+1}" aria-label="${i+1} estrellas" title="${i+1} estrellas · vuelve a pulsar para quitar" aria-pressed="${properties.rating===i+1}" class="${properties.rating!==null&&i<properties.rating?'on':''}">${icon('star')}</button>`).join('')}</div><div class="item-actions-states" role="group" aria-label="Estado de lectura">${states.map(state=>`<button type="button" data-item-state="${state}" title="${stateNames[state]}" aria-label="${stateNames[state]}" aria-pressed="${properties.estado_lectura===state}"><span class="state-indicator ${state}"></span></button>`).join('')}</div></div>`:'')+
-   `<div class="item-actions-group">${first?choice('cover-options','image',selectionCount>1?'Opciones de portadas…':'Opciones de portada…'):''}${first?`<div class="item-action-submenu-wrap"><button type="button" data-item-submenu="render-cover" class="item-action-row has-submenu" aria-haspopup="menu" aria-expanded="false">${icon('render')}<span>${selectionCount>1?'Renderizar portadas':'Renderizar portada'}</span>${icon('chevronRight','submenu-arrow')}</button><div class="item-action-submenu" role="menu" hidden>${choice('cover-local','local','Renderizar aquí')}${choice('cover-colab','cloud','Usar Colab')}</div></div>`:''}${choice('open-panel','sidebar',$('inspector').classList.contains('is-compact')?'Abrir panel lateral':'Cerrar panel lateral')}${first&&first.tipo!=='curso'?choice('assign','package','Asignar a contenedor…'):''}${course?choice('storage','folder','Extraer a la biblioteca'):''}</div>`;
+   `<div class="item-actions-group">${first?choice('manage-tags','tag',currentLang==='en'?'Manage tags':'Gestionar etiquetas'):''}${first?choice('cover-options','image',selectionCount>1?'Opciones de portadas…':'Opciones de portada…'):''}${first?`<div class="item-action-submenu-wrap"><button type="button" data-item-submenu="render-cover" class="item-action-row has-submenu" aria-haspopup="menu" aria-expanded="false">${icon('render')}<span>${selectionCount>1?'Renderizar portadas':'Renderizar portada'}</span>${icon('chevronRight','submenu-arrow')}</button><div class="item-action-submenu" role="menu" hidden>${choice('cover-local','local','Renderizar aquí')}${choice('cover-colab','cloud','Usar Colab')}</div></div>`:''}${choice('open-panel','sidebar',$('inspector').classList.contains('is-compact')?'Abrir panel lateral':'Cerrar panel lateral')}${first&&first.tipo!=='curso'?choice('assign','package','Asignar a contenedor…'):''}${course?choice('storage','folder','Extraer a la biblioteca'):''}</div>`;
  if(point){el.style.right='auto';el.style.left=Math.max(8,Math.min(point.x,innerWidth-el.offsetWidth-8))+'px';el.style.top=Math.max(8,point.y+el.offsetHeight+8>innerHeight?point.y-el.offsetHeight:point.y)+'px';}
  const apply=async(field,value)=>{el.hidden=true;popoverAnchor=null;await api('bulk_update',{ids,field,value});if(S.selected&&ids.includes(S.selected.drive_id)){S.selected[field]=value;renderDetail(S.selected);}for(const row of S.resources)if(ids.includes(row.id))row[field]=value;await refresh();if(field==='oculto'&&value)notify('Oculto. Busca @ocultos para volver a mostrarlo.');};
- const submenuWrap=el.querySelector('.item-action-submenu-wrap'),submenuBtn=submenuWrap?.querySelector('[data-item-submenu]'),submenu=submenuWrap?.querySelector('.item-action-submenu');const openSubmenu=()=>{if(!submenu||!submenuBtn)return;submenu.hidden=false;submenu.classList.remove('flip-left','flip-up');submenuBtn.setAttribute('aria-expanded','true');const wrapRect=submenuWrap.getBoundingClientRect(),subRect=submenu.getBoundingClientRect();if(wrapRect.right+subRect.width+10>innerWidth)submenu.classList.add('flip-left');if(wrapRect.top+subRect.height+8>innerHeight)submenu.classList.add('flip-up');};const closeSubmenu=()=>{if(!submenu||!submenuBtn)return;submenu.hidden=true;submenuBtn.setAttribute('aria-expanded','false');};if(submenuWrap){submenuWrap.addEventListener('pointerenter',openSubmenu);submenuWrap.addEventListener('pointerleave',closeSubmenu);}el.onclick=guard(async e=>{if(e.target.closest('[data-item-submenu]')){e.stopPropagation();openSubmenu();return;}const rating=e.target.closest('[data-item-rating]');if(rating){const value=Number(rating.dataset.itemRating);await apply('rating',properties.rating===value?0:value);return;}const state=e.target.closest('[data-item-state]');if(state){await apply('estado_lectura',state.dataset.itemState);return;}const action=e.target.closest('[data-item-action]')?.dataset.itemAction;if(!action)return;el.hidden=true;popoverAnchor=null;if(action==='cover-options'){openCoverDialog(first,course?S.course?.drive_id:null,ids);return;}if(action==='cover-local'||action==='cover-colab'){await renderCovers(ids,action==='cover-local'?'local':'colab');return;}if(action==='open-panel'){setInspectorCompact(!$('inspector').classList.contains('is-compact'));return;}if(action==='storage'){await moveSelectedCourseToStorage();return;}if(action==='assign'){$('containerProperty')?.click();return;}if(action==='remove-recent'){const result=await api('bulk_remove_recent',{ids});for(const row of S.resources)if(ids.includes(row.id))row.recent_hidden=1;await refresh();notify(result.updated===1?'Quitado de recientes':`${result.updated} elementos quitados de recientes`);return;}if(!first)return;const field={pin:'fijado',favorite:'es_favorito',visible:'oculto'}[action];if(field)await apply(field,field==='oculto'?properties.oculto===0:properties[field]!==1);});
+ const submenuWrap=el.querySelector('.item-action-submenu-wrap'),submenuBtn=submenuWrap?.querySelector('[data-item-submenu]'),submenu=submenuWrap?.querySelector('.item-action-submenu');const openSubmenu=()=>{if(!submenu||!submenuBtn)return;submenu.hidden=false;submenu.classList.remove('flip-left','flip-up');submenuBtn.setAttribute('aria-expanded','true');const wrapRect=submenuWrap.getBoundingClientRect(),subRect=submenu.getBoundingClientRect();if(wrapRect.right+subRect.width+10>innerWidth)submenu.classList.add('flip-left');if(wrapRect.top+subRect.height+8>innerHeight)submenu.classList.add('flip-up');};const closeSubmenu=()=>{if(!submenu||!submenuBtn)return;submenu.hidden=true;submenuBtn.setAttribute('aria-expanded','false');};if(submenuWrap){submenuWrap.addEventListener('pointerenter',openSubmenu);submenuWrap.addEventListener('pointerleave',closeSubmenu);}el.onclick=guard(async e=>{if(e.target.closest('[data-item-submenu]')){e.stopPropagation();openSubmenu();return;}const rating=e.target.closest('[data-item-rating]');if(rating){const value=Number(rating.dataset.itemRating);await apply('rating',properties.rating===value?0:value);return;}const state=e.target.closest('[data-item-state]');if(state){await apply('estado_lectura',state.dataset.itemState);return;}const action=e.target.closest('[data-item-action]')?.dataset.itemAction;if(!action)return;el.hidden=true;popoverAnchor=null;if(action==='manage-tags'){await openTagManager(ids);return;}if(action==='cover-options'){openCoverDialog(first,course?S.course?.drive_id:null,ids);return;}if(action==='cover-local'||action==='cover-colab'){await renderCovers(ids,action==='cover-local'?'local':'colab');return;}if(action==='open-panel'){setInspectorCompact(!$('inspector').classList.contains('is-compact'));return;}if(action==='storage'){await moveSelectedCourseToStorage();return;}if(action==='assign'){$('containerProperty')?.click();return;}if(action==='remove-recent'){const result=await api('bulk_remove_recent',{ids});for(const row of S.resources)if(ids.includes(row.id))row.recent_hidden=1;await refresh();notify(result.updated===1?'Quitado de recientes':`${result.updated} elementos quitados de recientes`);return;}if(!first)return;const field={pin:'fijado',favorite:'es_favorito',visible:'oculto'}[action];if(field)await apply(field,field==='oculto'?properties.oculto===0:properties[field]!==1);});
 }
 $('rating').onclick=()=>{const el=pop($('rating'));if(!el)return;stars(el,0,async n=>{$('popover').hidden=true;popoverAnchor=null;await toggleFacet('@rating:','@rating:'+n);});};
 $('favorite').onclick=guard(async()=>{await flush();if(S.tokens.includes('@favoritos')){S.tokens=S.tokens.filter(token=>token!=='@favoritos');if(S.view!=='course')setView('grid');await refresh(true);}else await addToken('@favoritos');});
@@ -1088,7 +1614,7 @@ $('statusFilter').onclick=()=>{const el=pop($('statusFilter'));if(!el)return;con
 const sortOptions=[['recientes','Actividad reciente'],['antiguos','Más antiguos'],['abiertos','Últimos abiertos'],['peso','Mayor tamaño'],['ligero','Menor tamaño'],['alfabetico','Alfabético A–Z'],['natural','Orden natural']];
 function selectedSort(){return [...S.tokens].reverse().find(t=>t.startsWith('@orden:'))?.slice(7)||null;}
 function currentSort(){return selectedSort()||'recientes';}
-async function applySort(key){if(key!=='natural'){await toggleFacet('@orden:','@orden:'+key);return;}const previous=[...S.tokens];S.tokens=S.tokens.filter(token=>!token.startsWith('@orden:'));try{await flush();if(S.view!=='course')setView('grid');await refresh(true);}catch(error){S.tokens=previous;renderFilters();throw error;}}
+async function applySort(key){recentImportIds.clear();if(key!=='natural'){await toggleFacet('@orden:','@orden:'+key);return;}const previous=[...S.tokens];S.tokens=S.tokens.filter(token=>!token.startsWith('@orden:'));try{await flush();if(S.view!=='course')setView('grid');await refresh(true);}catch(error){S.tokens=previous;renderFilters();throw error;}}
 function showSortMenu(){const el=pop($('sort'));if(!el)return;el.classList.add('sort-popover');const selected=selectedSort();el.innerHTML=`<button data-recent="true" aria-current="${S.tokens.includes('@recientes')}"><span>Recientes abiertos</span><span>${S.tokens.includes('@recientes')?'✓':''}</span></button>`+sortOptions.map(([key,label])=>`<button data-sort="${key}" aria-current="${key!=='natural'&&selected===key}"><span>${esc(label)}</span><span>${key!=='natural'&&selected===key?'✓':''}</span></button>`).join('');positionToolbarPopover(el,$('sort'));el.onclick=guard(async e=>{if(e.target.closest('[data-recent]')){el.hidden=true;popoverAnchor=null;if(S.tokens.includes('@recientes'))S.tokens=S.tokens.filter(token=>token!=='@recientes');else S.tokens.push('@recientes');await refresh(true);return;}const key=e.target.closest('[data-sort]')?.dataset.sort;if(!key)return;el.hidden=true;popoverAnchor=null;await applySort(key);});}
 $('sort').onclick=showSortMenu;
 $('sort').addEventListener('wheel',e=>{e.preventDefault();const index=sortOptions.findIndex(([key])=>key===(selectedSort()||'natural'));const next=(index+(e.deltaY>0?1:-1)+sortOptions.length)%sortOptions.length;guard(()=>applySort(sortOptions[next][0]))();},{passive:false});
@@ -1124,7 +1650,7 @@ document.addEventListener('click',e=>{if(suppressCardClick||e.target.closest('.c
 async function selectGridRange(id,extend=false){const end=S.items.findIndex(item=>item.drive_id===id),start=S.items.findIndex(item=>item.drive_id===selectionAnchorId);if(end<0)return;if(start<0){selectionAnchorId=id;return select(id);}const ids=S.items.slice(Math.min(start,end),Math.max(start,end)+1).map(item=>item.drive_id);S.bulkIds=new Set(extend?[...S.bulkIds,...ids]:ids);await select(id,true,true);updateBulkButton();scheduleDraw();}
 async function toggleBulkSelection(id){if(S.bulkIds.has(id)){S.bulkIds.delete(id);if(S.selected?.drive_id===id){const last=[...S.bulkIds].at(-1);if(last)await select(last,true,true);else{S.selected=null;$('details').hidden=true;$('inspectorEmpty').hidden=false;}}}else{S.bulkIds.add(id);await select(id,true,true);}updateBulkButton();scheduleDraw();}
 async function bulkMetadata(field,operation,value){await flush();if(!S.bulkIds.size)throw Error('Selecciona al menos un elemento.');const ids=[...S.bulkIds];const result=await api('bulk_metadata',{ids,field,operation,value});if(field==='autor')authorCatalog=null;else if(field==='etiquetas'){tagCatalog=null;if(operation==='add'||operation==='set')recordRecentTag(value);}if(S.view==='course')for(const row of S.resources)if(ids.includes(row.id)){if(field==='etiquetas'){const names=[...new Set(String(row.etiquetas||'').split(/\s+/).filter(Boolean))],tag='+'+value.replace(/^\+/,'');if(operation==='add'&&!names.includes(tag))names.push(tag);else if(operation==='remove')names.splice(0,names.length,...names.filter(name=>name!==tag));else if(operation==='set'){names.splice(0,names.length,tag,...names.filter(name=>name!==tag));}row.etiquetas=names.join(' ');}else{const names=new Set(String(row.autor||'').split('\n').filter(Boolean));if(operation==='add')names.add(value);else names.delete(value);row.autor=[...names].join('\n');}}if(S.selected&&S.bulkIds.has(S.selected.drive_id)){S.selected=await api('detail',{id:S.selected.drive_id});renderDetail(S.selected);}await refresh(false);updateBulkButton();notify(`${result.updated} elementos actualizados`);}
-async function select(id,force=false,preserve=false){if(S.pinned&&S.selected&&!force)return;if(!preserve)S.bulkIds=new Set([id]);const revision=++S.selectionRevision;const isDifferent=S.selected?.drive_id!==id;if(isDifferent){for(const [cardId,node] of S.rows){node.classList.toggle('selected',cardId===id);if(!preserve)node.classList.toggle('bulk-selected',cardId===id);}const preview=S.items.find(i=>i.drive_id===id);if(preview){S.selected=preview;renderDetail(preview,true);}}await flush();const item=await api('detail',{id});if(revision!==S.selectionRevision)return;S.selected=item;renderDetail(item,isDifferent&&!S.items.some(i=>i.drive_id===id));scheduleDraw();}
+async function select(id,force=false,preserve=false){if(S.pinned&&S.selected&&!force)return;const clearImportPriority=recentImportIds.size&&!recentImportIds.has(id);if(clearImportPriority)recentImportIds.clear();if(!preserve)S.bulkIds=new Set([id]);const revision=++S.selectionRevision;const isDifferent=S.selected?.drive_id!==id;if(isDifferent){for(const [cardId,node] of S.rows){node.classList.toggle('selected',cardId===id);if(!preserve)node.classList.toggle('bulk-selected',cardId===id);}const preview=S.items.find(i=>i.drive_id===id);if(preview){S.selected=preview;renderDetail(preview,true);}}await flush();const item=await api('detail',{id});if(revision!==S.selectionRevision)return;S.selected=item;renderDetail(item,isDifferent&&!S.items.some(i=>i.drive_id===id));scheduleDraw();if(clearImportPriority)await refresh();}
 function authorNames(value){return String(value||'').split(/\r?\n/).map(name=>name.trim()).filter(Boolean);}
 function resizeDetailTitle(){const title=$('title');title.style.height='auto';title.style.height=Math.min(126,Math.max(27,title.scrollHeight))+'px';}
 
@@ -1180,7 +1706,15 @@ function renderDetail(item,animate=false){$('inspectorEmpty').hidden=true;$('det
  const favoriteButton=$('itemFavorite'),previousItem=favoriteButton.dataset.item,previousPressed=favoriteButton.getAttribute('aria-pressed');favoriteButton.innerHTML=icon('heart');favoriteButton.dataset.item=item.drive_id;favoriteButton.setAttribute('aria-pressed',String(!!item.es_favorito));favoriteButton.setAttribute('aria-label',item.es_favorito?'Quitar de favoritos':'Marcar como favorito');favoriteButton.title=favoriteButton.getAttribute('aria-label');if(previousItem===item.drive_id&&previousPressed!==null&&previousPressed!==favoriteButton.getAttribute('aria-pressed'))animateControl(favoriteButton,'favorite-toggle');
  stars($('itemRating'),item.rating,n=>saveNow('rating',n===S.selected.rating?0:n));
  const date=item.fecha_agregado?new Date(item.fecha_agregado.replace(' ','T')+'Z').toLocaleDateString('es-PE'): '—';
- $('properties').innerHTML=`<div class="property"><span>Tamaño</span><span>${esc(bytes(item.tamano_bytes))}</span></div><div class="property"><span>Tipo</span><span>${esc(({documento:'Documento',contenedor:'Contenedor',video:'Vídeo',audio:'Audio',imagen:'Imagen',otro:'Otro archivo'})[item.tipo_contenido]||item.tipo_contenido||item.tipo)}</span></div><div class="property"><span>Formato</span><span>${esc(item.formato||'—')}</span></div><div class="property"><span>Contenedor</span>${item.tipo==='curso'?'<span>—</span>':`<button id="containerProperty" class="property-action" title="Asignar a contenedor">${esc(item.container_title||'—')}</button>`}</div><div class="property"><span>Añadido</span><span>${esc(date)}</span></div><div class="property"><span>Páginas / dimensiones</span><span>No disponibles</span></div>`+(item.tipo==='curso'&&!item.container_parent?`<div class="property"><label for="deepSearch">Búsqueda profunda en catálogo general</label><input id="deepSearch" type="checkbox" ${item.indexar_contenido?'checked':''} aria-label="Buscar archivos y carpetas internas desde la biblioteca"></div>`:'')+((item.container_parent||(S.bulkIds.size>1&&S.items.some(i=>S.bulkIds.has(i.drive_id)&&i.container_parent)))?`<div class="property"><label for="searchOverride">Búsqueda global</label><select id="searchOverride" aria-label="Incluir en búsqueda global"><option value="-1" ${item.search_override===-1?'selected':''}>Heredar</option><option value="1" ${item.search_override===1?'selected':''}>Incluir</option><option value="0" ${item.search_override===0?'selected':''}>Excluir</option></select></div><div class="property"><label for="containerFilterProperty">Mostrar en filtros principales</label><input id="containerFilterProperty" type="checkbox" ${item.mostrar_en_filtros===0?'':'checked'} aria-label="Mostrar favorito, calificación y estado al filtrar en el menú principal"></div>`:'')+`<div class="property"><span>Fijado</span><button id="pinProperty" class="property-action" aria-pressed="${!!item.fijado}">${item.fijado?'Quitar':'Fijar'}</button></div>`+`<div class="property"><label for="hiddenProperty">Visible</label><input id="hiddenProperty" type="checkbox" ${item.oculto?'':'checked'} aria-label="Mostrar en biblioteca"></div>`;
+  const typeMap = {
+   documento: t('typeDoc'),
+   contenedor: t('typeContainer'),
+   video: t('typeVideo'),
+   audio: t('typeAudio'),
+   imagen: t('typeImage'),
+   otro: t('typeOther')
+  };
+  $('properties').innerHTML=`<div class="property"><span>${t('propSize')}</span><span>${esc(bytes(item.tamano_bytes))}</span></div><div class="property"><span>${t('propType')}</span><span>${esc(typeMap[item.tipo_contenido]||item.tipo_contenido||item.tipo)}</span></div><div class="property"><span>${t('propFormat')}</span><span>${esc(item.formato||'—')}</span></div><div class="property"><span>${t('propContainer')}</span>${item.tipo==='curso'?'<span>—</span>':`<button id="containerProperty" class="property-action" title="${t('assignContainer')}">${esc(item.container_title||'—')}</button>`}</div><div class="property"><span>${t('propAdded')}</span><span>${esc(date)}</span></div><div class="property"><span>${t('propDimensions')}</span><span>${t('propDimensionsNone')}</span></div>`+(item.tipo==='curso'&&!item.container_parent?`<div class="property"><label for="deepSearch">${t('propDeepSearch')}</label><input id="deepSearch" type="checkbox" ${item.indexar_contenido?'checked':''} aria-label="${t('propDeepSearch')}"></div>`:'')+((item.container_parent||(S.bulkIds.size>1&&S.items.some(i=>S.bulkIds.has(i.drive_id)&&i.container_parent)))?`<div class="property"><label for="searchOverride">${currentLang === 'en' ? 'Global search' : 'Búsqueda global'}</label><select id="searchOverride" aria-label="${currentLang === 'en' ? 'Include in global search' : 'Incluir en búsqueda global'}"><option value="-1" ${item.search_override===-1?'selected':''}>${currentLang === 'en' ? 'Inherit' : 'Heredar'}</option><option value="1" ${item.search_override===1?'selected':''}>${currentLang === 'en' ? 'Include' : 'Incluir'}</option><option value="0" ${item.search_override===0?'selected':''}>${currentLang === 'en' ? 'Exclude' : 'Excluir'}</option></select></div><div class="property"><label for="containerFilterProperty">${t('propShowInFilters')}</label><input id="containerFilterProperty" type="checkbox" ${item.mostrar_en_filtros===0?'':'checked'} aria-label="${t('propShowInFilters')}"></div>`:'')+`<div class="property"><span>${t('propPinned')}</span><button id="pinProperty" class="property-action" aria-pressed="${!!item.fijado}">${item.fijado?t('unpinAction'):t('pinAction')}</button></div>`+`<div class="property"><label for="hiddenProperty">${t('propVisible')}</label><input id="hiddenProperty" type="checkbox" ${item.oculto?'':'checked'} aria-label="${t('propVisible')}"></div>`;
 
 }
 $('properties').onchange=guard(async event=>{if(!S.selected)return;const id=S.selected.drive_id;if(event.target.id==='deepSearch'){const result=await api('set_deep_search',{id,enabled:event.target.checked});S.selected.indexar_contenido=result.indexar_contenido;await refresh();notify(result.indexar_contenido?'Búsqueda profunda activada':'Búsqueda profunda desactivada');}else if(event.target.id==='hiddenProperty'){const hidden=!event.target.checked,ids=S.bulkIds.size?[...S.bulkIds]:[id];if(ids.length>1)await api('bulk_update',{ids,field:'oculto',value:hidden});else await api('set_hidden',{id,hidden});S.selected.oculto=hidden?1:0;if(S.view==='course')for(const row of S.resources)if(ids.includes(row.id))row.oculto=hidden?1:0;for(const targetId of ids){const card=S.items.find(i=>i.drive_id===targetId);if(card)card.oculto=hidden?1:0;}renderDetail(S.selected);await refresh();if(hidden)notify('Oculto. Busca @ocultos para volver a mostrarlo.');}else if(event.target.id==='containerFilterProperty'){const enabled=event.target.checked,ids=S.bulkIds.size?[...S.bulkIds]:[id];await api('bulk_update',{ids,field:'mostrar_en_filtros',value:enabled});S.selected.mostrar_en_filtros=enabled?1:0;if(S.view==='course')for(const row of S.resources)if(ids.includes(row.id))row.mostrar_en_filtros=enabled?1:0;for(const targetId of ids){const card=S.items.find(i=>i.drive_id===targetId);if(card)card.mostrar_en_filtros=enabled?1:0;}renderDetail(S.selected);await refresh();}else if(event.target.id==='searchOverride'){const value=Number(event.target.value),ids=S.bulkIds.size?[...S.bulkIds]:[id];await api('set_search_override',{ids,value});S.selected.search_override=value;if(S.view==='course')for(const row of S.resources)if(ids.includes(row.id))row.search_override=value;for(const targetId of ids){const card=S.items.find(i=>i.drive_id===targetId);if(card)card.search_override=value;}renderDetail(S.selected);await refresh();}});
@@ -1240,6 +1774,8 @@ $('itemTags').ondragleave=e=>{e.target.closest('[data-tag-index]')?.classList.re
 $('itemTags').ondrop=guard(async e=>{const target=e.target.closest('[data-tag-index]');if(draggedTagIndex===null||!target)return;e.preventDefault();const to=Number(target.dataset.tagIndex),tags=String(S.selected.etiquetas||'').split(/\s+/).filter(Boolean);if(to!==draggedTagIndex){const [tag]=tags.splice(draggedTagIndex,1);tags.splice(to,0,tag);await saveNow('etiquetas',tags.join(' '));}draggedTagIndex=null;});
 $('itemTags').ondragend=()=>{draggedTagIndex=null;$('itemTags').querySelectorAll('.dragging,.drop-target').forEach(node=>node.classList.remove('dragging','drop-target'));};
 $('tagForm').onsubmit=guard(async e=>{e.preventDefault();const text=$('tagInput').value.trim();if(text){recordRecentTag(text);tagCatalog=null;if(S.bulkIds.size>1)await bulkMetadata('etiquetas','add',text);else await saveNow('etiquetas',S.selected.etiquetas+' '+text);$('tagInput').value='';}});
+wireMetadataSuggestions($('tagInput'),'tag',async value=>{$('tagInput').value=value;$('tagForm').requestSubmit();});
+wireMetadataSuggestions($('authorInput'),'author',async value=>{$('authorInput').value=value;$('authorForm').requestSubmit();});
 $('driveOpen').onclick=guard(async()=>{await flush();const result=await api('open',{id:S.selected.drive_id,mode:'web'});if(!result)throw Error('No se pudo abrir Google Drive.');await refresh(true);});
 $('localOpen').onclick=guard(async()=>{await flush();await api('reveal',{id:S.selected.drive_id});});
 
@@ -1413,7 +1949,7 @@ $('coverDialogClose')?.addEventListener('click',()=>$('coverDialog').close());
 $('coverDialog')?.addEventListener('click',e=>{if(e.target===$('coverDialog'))$('coverDialog').close();});
 
 async function importCover(file){if(!file||!S.selected)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Selecciona una imagen JPG, PNG o WEBP.');if(file.size>12_000_000)throw Error('La portada debe pesar menos de 12 MB.');const id=S.selected.drive_id;const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=reject;r.readAsDataURL(file);});await api('save_cover',{id,data});S.covers.delete(id);coverCache.delete(id);if(S.selected?.drive_id===id)renderDetail(S.selected);S.rows.get(id)?.remove();S.rows.delete(id);scheduleDraw();notify('Portada actualizada');}
-$('hero').ondblclick=guard(()=>S.selected&&openItem(S.selected));$('hero').onkeydown=guard(e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(S.selected)return openItem(S.selected);}if(e.key==='F2'){e.preventDefault();if(S.selected){const ids=S.bulkIds.size>1?[...S.bulkIds]:[S.selected.drive_id];openCoverDialog(S.selected,null,ids);}}});$('hero').oncontextmenu=e=>{e.preventDefault();if(S.selected){const ids=S.bulkIds.size>1?[...S.bulkIds]:[S.selected.drive_id];openCoverDialog(S.selected,null,ids);}};$('coverFile').onchange=guard(async e=>{const file=e.target.files[0];e.target.value='';await importCover(file);});$('hero').ondragover=e=>{e.preventDefault();$('hero').classList.add('dragging');};$('hero').ondragleave=()=>$('hero').classList.remove('dragging');$('hero').ondrop=guard(async e=>{e.preventDefault();$('hero').classList.remove('dragging');await importCover(e.dataTransfer.files[0]);});
+$('hero').ondblclick=guard(()=>S.selected&&openItem(S.selected));$('hero').onkeydown=guard(e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();if(S.selected)return openItem(S.selected);}});$('hero').oncontextmenu=e=>{e.preventDefault();if(S.selected){const ids=S.bulkIds.size>1?[...S.bulkIds]:[S.selected.drive_id];openCoverDialog(S.selected,null,ids);}};$('coverFile').onchange=guard(async e=>{const file=e.target.files[0];e.target.value='';await importCover(file);});$('hero').ondragover=e=>{e.preventDefault();$('hero').classList.add('dragging');};$('hero').ondragleave=()=>$('hero').classList.remove('dragging');$('hero').ondrop=guard(async e=>{e.preventDefault();$('hero').classList.remove('dragging');await importCover(e.dataTransfer.files[0]);});
 document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',guard(async e=>{e.preventDefault();if(e.target.closest('#hero')||window.balisco?.nativeDrop)return;const file=[...(e.dataTransfer?.files||[])][0];const path=file?.pywebviewFullPath||file?.path;if(!path){notify('Suelta archivos desde el Explorador de Windows.','error');return;}const job=await api('start_import',{path});window.balisco?.importStarted(job.name,job.kind,job.id);}));
 function courseLayoutKey(path=S.coursePath){const relative=path.map(part=>part.toLocaleLowerCase()).join('/'),folderId=S.courseFolderIds.get(relative);return 'balisco.containerLayout.v1.'+S.course.drive_id+'.'+(path.length?(folderId?'id:'+folderId:'path:'+JSON.stringify(path.map(part=>part.toLocaleLowerCase()))):'root');}
 function saveCourseLayout(){if(!S.course)return;localStorage.setItem(courseLayoutKey(),JSON.stringify({view:S.courseViewMode,grid:S.courseZoom.grid,list:S.courseZoom.list}));}
@@ -1421,7 +1957,7 @@ function loadCourseLayout(path,preferredView=null){let saved=null;try{saved=JSON
 function navigateCoursePath(path){saveCourseLayout();S.coursePath=[...path];loadCourseLayout(S.coursePath);clearCourseSelection();renderResources();}
 async function openItem(item){
  await flush();
- if(item.tipo!=='curso'&&!item.container_parent){if(!await api('open',{id:item.drive_id,mode:S.mode}))throw Error('No se pudo abrir el elemento.');await refresh(true);return;}
+ if(item.tipo!=='curso'&&!item.container_parent){if(S.mode==='balisco'){await openBaliscoPlayer(item.drive_id,null);await refresh(true);return;}if(!await api('open',{id:item.drive_id,mode:S.mode}))throw Error('No se pudo abrir el elemento.');refreshCoverForOpenedItem(item.drive_id,null);await refresh(true);return;}
  const root=item.container_parent?await api('detail',{id:item.container_parent}):item;
  S.course=root;S.coursePath=[];S.courseFolderIds=new Map();S.courseZoom={grid:0,list:1};S.courseQuery='';S.courseSelection=null;S.courseSelectedKeys.clear();S.courseSelectionRevision++;S.courseCovers.clear();
  const modern=localStorage.getItem('balisco.containerView.v2.'+root.drive_id),legacy=localStorage.getItem('balisco.containerView.'+root.drive_id);
@@ -1501,10 +2037,10 @@ $('resources').onclick=guard(async e=>{if(courseSuppressClick)return;const row=e
 async function updateCourseSelected(field,value){const selection=S.courseSelection,rows=S.courseSelectedKeys.size>1?courseSelectedRows():[...$('resources').querySelectorAll('[data-resource-key]')].filter(row=>row.dataset.resourceKey===selection?.key);let updated=0;for(const row of rows){if(row.hasAttribute('data-folder')||!row.dataset.id)continue;try{await api('container_update',{container:S.course.drive_id,id:row.dataset.id,field,value});updated++;}catch(error){if(rows.length===1)throw error;}}if(selection?.detail?.item){selection.detail.item[field]=['es_favorito','oculto','mostrar_en_filtros'].includes(field)?Number(value):value;renderCourseInspector();}if(rows.length>1)notify(`${updated} archivos actualizados`);}
 $('courseInspector').onclick=guard(async e=>{const selection=S.courseSelection,item=selection?.detail?.item;if(!selection||!item)return;if(e.target.closest('[data-course-favorite]')){await updateCourseSelected('es_favorito',!item.es_favorito);return;}const rating=e.target.closest('[data-course-rating]');if(rating)await updateCourseSelected('rating',Number(rating.dataset.courseRating));});
 $('courseInspector').onchange=guard(async e=>{const selection=S.courseSelection,item=selection?.detail?.item;if(!selection||!item)return;const field=e.target.matches('[data-course-notes]')?'notas':e.target.dataset.courseField;if(field){await api('update',{id:selection.id,field,value:e.target.value});item[field]=e.target.value;return;}if(e.target.matches('[data-course-state]')){await updateCourseSelected('estado_lectura',e.target.value);return;}if(e.target.matches('[data-course-filter-visible]')){await updateCourseSelected('mostrar_en_filtros',e.target.checked);return;}if(e.target.matches('[data-course-visible]'))await updateCourseSelected('oculto',!e.target.checked);});
-$('resources').ondblclick=guard(async e=>{const row=e.target.closest('[data-resource-key]');if(!row)return;if(row.hasAttribute('data-folder')){navigateCoursePath(row.dataset.folder.split('/'));return;}await api('container_open',{container:S.course.drive_id,id:row.dataset.id,mode:S.mode});const resource=S.resources.find(entry=>entry.id===row.dataset.id);if(resource){resource.ultimo_acceso=new Date().toISOString();resource.recent_hidden=0;}});
+$('resources').ondblclick=guard(async e=>{const row=e.target.closest('[data-resource-key]');if(!row)return;if(row.hasAttribute('data-folder')){navigateCoursePath(row.dataset.folder.split('/'));return;}if(S.mode==='balisco'){await openBaliscoPlayer(row.dataset.id,S.course.drive_id);}else{await api('container_open',{container:S.course.drive_id,id:row.dataset.id,mode:S.mode});refreshCoverForOpenedItem(row.dataset.id,S.course.drive_id);}const resource=S.resources.find(entry=>entry.id===row.dataset.id);if(resource){resource.ultimo_acceso=new Date().toISOString();resource.recent_hidden=0;}});
 function confirmCourseAction(selection,operation,skipConfirm=false){const dialog=$('dialog');$('dialogTitle').textContent=operation==='storage'?'Extraer a la biblioteca':selection.folder?'Eliminar carpeta':'Eliminar archivo';$('dialogBody').replaceChildren();const message=document.createElement('p');message.textContent=operation==='storage'?`“${selection.name}” se moverá del contenedor a la biblioteca. ¿Continuar?`:`“${selection.name}” y su contenido se moverán a la papelera de Drive. ¿Continuar?`;const confirm=document.createElement('button');confirm.className=operation==='storage'?'text-button':'text-button danger-button';confirm.textContent=operation==='storage'?'Extraer a la biblioteca':'Mover a la papelera';confirm.onclick=guard(async()=>{if(operation==='storage'&&selection.folder){const result=await api('container_move_folder_to_storage',{container:S.course.drive_id,path:selection.path.split('/')});const prefix=selection.path.toLocaleLowerCase()+'/';S.resources=S.resources.filter(resource=>!resource.title.replaceAll('\\','/').toLocaleLowerCase().startsWith(prefix)&&resource.title.replaceAll('\\','/').toLocaleLowerCase()!==selection.path.toLocaleLowerCase());notify(`${result.moved} archivos movidos a la biblioteca`);}else if(operation==='storage'){await api('container_move_to_storage',{container:S.course.drive_id,id:selection.id});S.resources=S.resources.filter(resource=>resource.id!==selection.id);notify('Elemento movido a la biblioteca');}else if(selection.folder){const parts=selection.path.split('/');await api('container_trash_folder',{container:S.course.drive_id,path:parts});const prefix=selection.path.toLocaleLowerCase()+'/';S.resources=S.resources.filter(resource=>!resource.title.replaceAll('\\','/').toLocaleLowerCase().startsWith(prefix)&&resource.title.replaceAll('\\','/').toLocaleLowerCase()!==selection.path.toLocaleLowerCase());notify('Carpeta movida a la papelera de Drive');}else{await api('container_trash',{container:S.course.drive_id,id:selection.id});S.resources=S.resources.filter(resource=>resource.id!==selection.id);notify('Elemento movido a la papelera de Drive');}S.courseSelection=null;S.courseSelectionRevision++;renderResources();$('courseInspector').hidden=true;$('inspectorEmpty').hidden=false;dialog.close();});const cancel=document.createElement('button');cancel.className='text-button';cancel.textContent='Cancelar';cancel.onclick=()=>dialog.close();$('dialogBody').append(message,confirm,cancel);if(skipConfirm)confirm.click();else dialog.showModal();}
 $('resources').oncontextmenu=guard(async e=>{const row=e.target.closest('[data-resource-key]');if(!row)return;e.preventDefault();if(closeRepeatedItemActions(row))return;const point={x:e.clientX,y:e.clientY};if(!S.courseSelectedKeys.has(row.dataset.resourceKey)){S.courseSelectedKeys=new Set([row.dataset.resourceKey]);await selectCourseResource(row);}const ids=courseSelectedRows().map(entry=>entry.dataset.id).filter(Boolean);await openItemActions(row,ids,true,point);});
-document.addEventListener('keydown',guard(async e=>{if(S.view!=='course'||e.target.closest('input,textarea,select,[contenteditable]')||$('dialog').open)return;const rows=[...$('resources').querySelectorAll('[data-resource-key]')];if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();S.courseSelectedKeys=new Set(rows.map(row=>row.dataset.resourceKey));paintCourseSelection();if(rows[0])await selectCourseResource(rows[0]);paintCourseSelection();return;}if(e.key==='Escape'){clearCourseSelection();return;}if(e.key==='Delete'&&S.courseSelection){e.preventDefault();if(S.courseSelectedKeys.size>1)confirmCourseBulkAction('delete',!S.confirmDelete);else confirmCourseAction(S.courseSelection,'delete',!S.confirmDelete);return;}if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)&&rows.length){e.preventDefault();const current=rows.findIndex(row=>row.dataset.resourceKey===S.courseSelection?.key),columns=S.courseViewMode==='grid'?Math.max(1,Math.round($('resources').clientWidth/(rows[0].getBoundingClientRect().width+20))):S.courseViewMode==='list'?Number(getComputedStyle($('courseView')).getPropertyValue('--course-list-rows'))||1:1,step=S.courseViewMode==='list'?(e.key==='ArrowLeft'?-columns:e.key==='ArrowRight'?columns:e.key==='ArrowUp'?-1:1):(e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:e.key==='ArrowUp'?-columns:columns),next=rows[Math.max(0,Math.min(rows.length-1,current+step))];if(next){await courseSelectFromEvent(next,e);next.focus();next.scrollIntoView({block:'nearest'});}return;}if(e.key==='Enter'&&S.courseSelection){e.preventDefault();const row=rows.find(entry=>entry.dataset.resourceKey===S.courseSelection.key);row?.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));}}));
+document.addEventListener('keydown',guard(async e=>{if(!$('baliscoPlayer')?.hidden||S.view!=='course'||e.target.closest('input,textarea,select,[contenteditable]')||$('dialog').open)return;const rows=[...$('resources').querySelectorAll('[data-resource-key]')];if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();S.courseSelectedKeys=new Set(rows.map(row=>row.dataset.resourceKey));paintCourseSelection();if(rows[0])await selectCourseResource(rows[0]);paintCourseSelection();return;}if(e.key==='Escape'){clearCourseSelection();return;}if(e.key==='Delete'&&S.courseSelection){e.preventDefault();if(S.courseSelectedKeys.size>1)confirmCourseBulkAction('delete',!S.confirmDelete);else confirmCourseAction(S.courseSelection,'delete',!S.confirmDelete);return;}if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)&&rows.length){e.preventDefault();const current=rows.findIndex(row=>row.dataset.resourceKey===S.courseSelection?.key),columns=S.courseViewMode==='grid'?Math.max(1,Math.round($('resources').clientWidth/(rows[0].getBoundingClientRect().width+20))):S.courseViewMode==='list'?Number(getComputedStyle($('courseView')).getPropertyValue('--course-list-rows'))||1:1,step=S.courseViewMode==='list'?(e.key==='ArrowLeft'?-columns:e.key==='ArrowRight'?columns:e.key==='ArrowUp'?-1:1):(e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:e.key==='ArrowUp'?-columns:columns),next=rows[Math.max(0,Math.min(rows.length-1,current+step))];if(next){await courseSelectFromEvent(next,e);next.focus();next.scrollIntoView({block:'nearest'});}return;}if(e.key==='Enter'&&S.courseSelection){e.preventDefault();const row=rows.find(entry=>entry.dataset.resourceKey===S.courseSelection.key);row?.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));}}));
 $('back').innerHTML=icon('back');$('folderBack').innerHTML=icon('back');$('explorer').innerHTML=icon('folder');
 
 $('filters').addEventListener('wheel',e=>{const el=e.currentTarget;if(el.scrollWidth<=el.clientWidth)return;const delta=Math.abs(e.deltaY)>Math.abs(e.deltaX)?e.deltaY:e.deltaX;if(!delta)return;e.preventDefault();el.scrollLeft+=delta;},{passive:false});
@@ -1517,8 +2053,2192 @@ $('metadata').onclick=guard(async()=>{await flush();if(S.view==='course'){const 
 async function finishTaxonomyEdit(operation,oldName,newName=''){await api('taxonomy_edit',{kind:metadataTab,operation,old:oldName,new:newName});tagCatalog=null;authorCatalog=null;metadataRows=null;await renderMetadata(true);await refresh();}
 $('metadataView').onclick=guard(async e=>{const tab=e.target.closest('[data-meta-tab]');if(tab){metadataTab=tab.dataset.metaTab;await renderMetadata(true);return;}const rename=e.target.closest('[data-meta-rename]'),remove=e.target.closest('[data-meta-delete]'),open=e.target.closest('[data-meta-open]');if(!rename&&!remove&&!open)return;const name=rename?.dataset.metaRename||remove?.dataset.metaDelete||open?.dataset.metaOpen;if(open){await addToken(metadataTab==='tag'?'+'+name:'@autor:'+name);return;}if(rename){const row=rename.closest('.metadata-row'),field=document.createElement('input');field.className='metadata-inline';field.value=name;row.querySelector('.metadata-name').replaceWith(field);field.focus();field.select();let committed=false;field.onkeydown=guard(async event=>{if(event.key==='Escape'){committed=true;await renderMetadata();return;}if(event.key==='Enter'){event.preventDefault();const value=field.value.trim();if(value){committed=true;await finishTaxonomyEdit('rename',name,value);}}});field.onblur=guard(async()=>{if(committed)return;committed=true;const value=field.value.trim();if(value&&value!==name)await finishTaxonomyEdit('rename',name,value);else await renderMetadata();});return;}$('dialogTitle').textContent=`Eliminar ${metadataTab==='tag'?'etiqueta':'autor'}`;$('dialogBody').innerHTML=`<p>Se quitará “${esc(name)}” de todos los elementos de este perfil.</p><button class="text-button danger-button" id="confirmMetaDelete">Eliminar</button>`;$('dialogBody').querySelector('#confirmMetaDelete').onclick=guard(async()=>{await finishTaxonomyEdit('delete',name);$('dialog').close();});$('dialog').showModal();});
 $('metadataSearch').oninput=()=>renderMetadata(false);
-function applyMode(){$('mode').innerHTML=icon(S.mode==='web'?'web':'local');$('mode').title='Modo de apertura: '+S.mode;const ml=$('modeLabel');if(ml)ml.textContent=S.mode==='web'?'Web':'Local';}
-$('mode').onclick=guard(async()=>{S.mode=S.mode==='local'?'web':'local';applyMode();await api('preference',{key:'modo',value:S.mode});});
+const OPEN_MODES=['balisco','local','web'];
+const OPEN_MODE_META={
+ balisco:{icon:'balisco',label:'Balisco',title:'Modo de apertura: Balisco (reproductor integrado)'},
+ local:{icon:'local',label:'Local',title:'Modo de apertura: Local (aplicación externa)'},
+ web:{icon:'drive',label:'Drive',title:'Modo de apertura: Drive (navegador)'}
+};
+function applyMode(){
+ const mode=OPEN_MODE_META[S.mode]?S.mode:'local';
+ S.mode=mode;
+ const meta=OPEN_MODE_META[mode],btn=$('mode');
+ btn.dataset.mode=mode;
+ btn.innerHTML=icon(meta.icon);
+ btn.title=meta.title+' · clic o rueda para cambiar';
+ btn.setAttribute('aria-label',btn.title);
+ const ml=$('modeLabel');if(ml)ml.textContent=meta.label;
+}
+async function cycleOpenMode(step=1){
+ const idx=OPEN_MODES.indexOf(S.mode);
+ S.mode=OPEN_MODES[((idx<0?0:idx)+step+OPEN_MODES.length)%OPEN_MODES.length];
+ applyMode();
+ animateControl($('mode'),'mode-change');
+ await api('preference',{key:'modo',value:S.mode});
+}
+$('mode').onclick=guard(()=>cycleOpenMode(1));
+$('mode').addEventListener('contextmenu',e=>{e.preventDefault();guard(()=>cycleOpenMode(1))();});
+$('mode').addEventListener('wheel',e=>{e.preventDefault();guard(()=>cycleOpenMode(e.deltaY>0?1:-1))();},{passive:false});
+
+let activePlayerCleanup=null;
+function formatMediaTime(sec){
+ if(!Number.isFinite(sec)||sec<0)return '0:00';
+ const s=Math.floor(sec),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),r=s%60;
+ return h>0?`${h}:${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`:`${m}:${String(r).padStart(2,'0')}`;
+}
+function closeBaliscoPlayer(){
+ if(typeof activePlayerCleanup==='function'){try{activePlayerCleanup();}catch{}activePlayerCleanup=null;}
+ const host=$('baliscoPlayer');
+ if(!host||host.hidden)return;
+ if(host.classList.contains('is-immersive'))api('window_set_fullscreen',{enabled:false}).catch(report);
+ host.classList.remove('is-immersive');
+ host.hidden=true;
+ host.replaceChildren();
+}
+function inferGalleryType(rawType,mime,ext){
+ const t=String(rawType||'').toLowerCase();
+ if(['documento','video','audio','imagen','otro'].includes(t))return t;
+ const m=String(mime||'').toLowerCase(),e=String(ext||'').toLowerCase().replace(/^\./,'');
+ if(m.startsWith('video/')||['mp4','webm','mkv','avi','mov','m4v'].includes(e))return 'video';
+ if(m.startsWith('audio/')||['mp3','wav','ogg','flac','m4a','aac','opus'].includes(e))return 'audio';
+ if(m.startsWith('image/')||['jpg','jpeg','png','webp','gif','bmp','svg','avif'].includes(e))return 'imagen';
+ if(['pdf','epub','cbz','fb2','txt','md','py','js','json','html','css'].includes(e))return 'documento';
+ return 'documento';
+}
+function getPlayableCatalog(containerId){
+ if(containerId&&S.view==='course'){
+  const showHidden=S.tokens.includes('@ocultos');
+  return S.resources.filter(r=>!r.folder&&Boolean(r.oculto)===showHidden).map(r=>{
+   const name=(r.displayName||r.title||'').split(/[\\/]+/).at(-1)||'Archivo';
+   const ext=name.includes('.')?name.split('.').at(-1).toUpperCase():(r.formato||'ARCHIVO').toUpperCase();
+   return {
+    id:r.id,
+    containerId,
+    title:r.titulo||name,
+    author:r.autor||'',
+    size:Number(r.size)||0,
+    format:ext,
+    type:inferGalleryType(r.tipo_contenido,r.mime,ext),
+    es_favorito:!!r.es_favorito,
+    estado_lectura:r.estado_lectura||'pendiente',
+    rating:Number(r.rating)||0,
+    language:r.idioma||'',
+    tags:r.etiquetas||[],
+    has_cover:!!r.has_cover,
+    last_opened:r.ultimo_acceso||''
+   };
+  });
+ }
+ return S.items.filter(item=>item.tipo!=='curso'&&!item.container_parent).map(item=>{
+  const ext=(item.formato||(item.titulo||'').split('.').at(-1)||'ARCHIVO').toUpperCase();
+  return {
+   id:item.drive_id,
+   containerId:null,
+   title:item.titulo||'Elemento',
+   author:item.autor||'',
+   size:Number(item.tamano_bytes)||0,
+   format:ext,
+   type:inferGalleryType(item.tipo_contenido,'',ext),
+   es_favorito:!!item.es_favorito,
+   estado_lectura:item.estado_lectura||'pendiente',
+   rating:Number(item.rating)||0,
+   language:item.idioma||'',
+   tags:item.etiquetas||[],
+   has_cover:!!item.has_cover,
+   last_opened:item.ultimo_acceso||''
+  };
+ });
+}
+function loadItemAnnotations(driveId){
+ try{return JSON.parse(localStorage.getItem(`balisco.annotations.${driveId}`)||'[]');}catch{return [];}
+}
+function saveItemAnnotations(driveId,list){
+ try{localStorage.setItem(`balisco.annotations.${driveId}`,JSON.stringify(list));}catch{}
+}
+function refreshCoverForOpenedItem(driveId, containerId = null) {
+ if (!driveId) return;
+ S.covers.delete(driveId);
+ coverCache.delete(driveId);
+ if (containerId) {
+  S.courseCovers.delete(driveId);
+  api('container_cover', { container: containerId, id: driveId }).then(src => {
+   if (!src) return;
+   coverCache.set(driveId, src);
+   const card = $('resources')?.querySelector(`[data-id="${CSS.escape(driveId)}"]`);
+   if (card) {
+    let img = card.querySelector('.resource-cover img');
+    if (!img) {
+     img = new Image();
+     img.alt = '';
+     card.querySelector('.resource-cover')?.prepend(img);
+     card.querySelector('.resource-art')?.remove();
+    }
+    img.src = src;
+   }
+   if (S.courseSelection?.id === driveId) {
+    const hero = $('courseInspector')?.querySelector('[data-course-hero]');
+    if (hero) {
+     let img = hero.querySelector('img');
+     if (!img) {
+      img = new Image();
+      img.alt = 'Miniatura';
+      hero.querySelector('.resource-art')?.remove();
+      hero.prepend(img);
+     }
+     img.src = src;
+    }
+   }
+  }).catch(() => {});
+ } else {
+  loadCover(driveId).then(src => {
+   if (!src) return;
+   const card = S.rows.get(driveId);
+   if (card) {
+    let img = card.querySelector('.cover img');
+    if (!img) {
+     img = new Image();
+     img.decoding = 'async';
+     img.alt = '';
+     card.querySelector('.cover')?.prepend(img);
+     const typ = card.querySelector('.typography');
+     if (typ) typ.hidden = true;
+    }
+    img.src = src;
+   }
+   if (S.selected?.drive_id === driveId) renderDetail(S.selected);
+  }).catch(() => {});
+ }
+}
+
+async function openBaliscoPlayer(initialDriveId, initialContainerId = null) {
+ await flush();
+ const host = $('baliscoPlayer');
+ if (!host) return;
+ closeBaliscoPlayer();
+ host.hidden = false;
+ host.innerHTML = `
+  <header class="player-topbar">
+   <div class="player-topbar-left">
+    <button type="button" class="player-btn icon-only back-pill" data-player-close title="${t('playerBack')}">${icon('back')}</button>
+   </div>
+   <div class="player-topbar-center"></div>
+   <div class="player-topbar-right"></div>
+  </header>
+  <div class="player-body">
+   <div class="player-stage">
+    <div class="library-loader" role="status" aria-label="Abriendo en Balisco"><div class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></div></div>
+   </div>
+  </div>
+ `;
+ host.querySelector('[data-player-close]').onclick = closeBaliscoPlayer;
+
+ let initialData;
+ try {
+  initialData = await api('player_open', { id: initialDriveId, container: initialContainerId });
+ } catch (err) {
+  closeBaliscoPlayer();
+  throw err;
+ }
+ if (host.hidden) return;
+ refreshCoverForOpenedItem(initialDriveId, initialContainerId);
+
+ const catalog = getPlayableCatalog(initialContainerId);
+ const currentKindType = inferGalleryType('', '', initialData.ext || initialData.format);
+ let galleryOpen = localStorage.getItem('balisco.player.galleryOpen') !== 'false';
+ const hasSameTypePeers = catalog.filter(item => item.type === currentKindType).length > 1;
+ let galleryFilter = hasSameTypePeers ? currentKindType : 'all';
+ let galleryQuery = '';
+ let galleryTokens = [];
+
+ const subParts = [
+  initialData.author ? initialData.author.split(/\r?\n/)[0] : '',
+  initialData.ext ? initialData.ext.replace(/^\./, '').toUpperCase() : '',
+  initialData.size ? bytes(initialData.size) : ''
+ ].filter(Boolean);
+
+ host.innerHTML = `
+  <header class="player-topbar" id="playerTopbar">
+   <div class="player-topbar-left">
+    <button type="button" class="player-btn icon-only back-pill" data-player-close title="${t('playerBack')}">${icon('back')}</button>
+    <div class="player-brand-badge" title="Modo Balisco">${icon('balisco')}</div>
+    <div class="player-title-wrap" id="playerTitleWrap">
+     <div class="player-title" id="playerMainTitle" title="${esc(initialData.title)}" tabindex="0" role="button" aria-label="Modificar título">
+      <span class="player-title-text">${esc(initialData.title)}</span>
+     </div>
+     <input type="text" class="player-title-input" id="playerMainTitleInput" aria-label="Modificar título" hidden>
+     <div class="player-subtitle" id="playerMainSub">${esc(subParts.join(' · ') || 'Reproductor integrado de Balisco')}</div>
+    </div>
+   </div>
+   <div class="player-topbar-center" id="playerCenterControls"></div>
+   <div class="player-topbar-right">
+    <button type="button" class="player-btn icon-only" data-player-split title="Dividir pantalla: ver 2 contenidos en paralelo">${icon('split')}</button>
+    <button type="button" class="player-btn icon-only ${initialData.es_favorito ? 'is-active' : ''}" data-player-fav aria-pressed="${!!initialData.es_favorito}" title="${initialData.es_favorito ? 'Quitar de favoritos' : 'Marcar como favorito'}">${icon('heart')}</button>
+    <div class="player-state-circles" id="playerStateCircles" title="Estado de lectura" role="radiogroup" aria-label="Estado de lectura">
+     ${states.map(st => `<button type="button" class="player-state-circle-btn ${(initialData.estado_lectura || 'pendiente') === st ? 'is-active' : ''}" data-player-state-btn="${st}" title="Estado: ${esc(stateNames[st])}" aria-label="Estado: ${esc(stateNames[st])}" role="radio" aria-checked="${(initialData.estado_lectura || 'pendiente') === st}"><span class="state-indicator ${st}"></span></button>`).join('')}
+    </div>
+    <button type="button" class="player-btn icon-only" data-player-open-local title="Abrir con aplicación externa (Modo Local)">${icon('local')}</button>
+    <button type="button" class="player-btn icon-only" data-player-open-web title="Abrir en Google Drive (Modo Drive)">${icon('drive')}</button>
+    <button type="button" class="player-btn icon-only" data-player-fullscreen title="Pantalla completa (F)">${icon('fullscreen')}</button>
+    <button type="button" class="player-btn icon-only ${galleryOpen ? 'is-active' : ''}" data-player-gallery-toggle aria-pressed="${galleryOpen}" title="Mostrar u ocultar galería lateral">${icon('sidebar')}</button>
+    <span class="divider"></span>
+    <button type="button" class="icon-button" data-player-win-min title="Minimizar" aria-label="Minimizar">${icon('winMin')}</button>
+    <button type="button" class="icon-button" data-player-win-max title="Maximizar / Restaurar" aria-label="Maximizar">${icon(maximizedState ? 'winRestore' : 'winMax')}</button>
+    <button type="button" class="icon-button player-win-close" data-player-win-close title="Cerrar aplicación" aria-label="Cerrar">${icon('winClose')}</button>
+   </div>
+  </header>
+  <div class="player-body" id="playerBody">
+   <div class="player-stage" id="playerStage">
+    <div class="player-split-host" id="playerSplitHost">
+     <div class="player-split-pane is-active-pane" id="playerPane0" data-pane-idx="0">
+      <div class="player-pane-subbar" id="paneSubbar0" hidden>
+       <div class="player-pane-title"><span class="player-pane-badge">Panel 1</span><span data-pane-name></span></div>
+       <span class="player-page-indicator" data-pane-status></span>
+      </div>
+      <div class="player-pane-body">
+       <aside class="player-toc-sidebar" id="paneToc0" hidden></aside>
+       <div class="player-pane-stage" id="paneStage0"></div>
+      </div>
+     </div>
+     <div class="player-split-resizer" id="playerSplitResizer" hidden></div>
+     <div class="player-split-pane" id="playerPane1" data-pane-idx="1" hidden>
+      <div class="player-pane-subbar" id="paneSubbar1">
+       <div class="player-pane-title"><span class="player-pane-badge" style="background:rgba(217,182,119,.2);color:var(--gold)">Panel 2</span><span data-pane-name></span></div>
+       <div style="display:flex;align-items:center;gap:6px">
+        <span class="player-page-indicator" data-pane-status></span>
+        <button type="button" class="player-btn icon-only" data-close-split title="Cerrar segundo panel">${icon('close')}</button>
+       </div>
+      </div>
+      <div class="player-pane-body">
+       <aside class="player-toc-sidebar" id="paneToc1" hidden></aside>
+       <div class="player-pane-stage" id="paneStage1"></div>
+      </div>
+     </div>
+    </div>
+    <button type="button" class="player-gallery-expand-tab" id="playerGalleryExpandTab" title="Mostrar galería de contenidos" ${galleryOpen ? '' : 'hidden'}>${icon('chevronLeft')}</button>
+   </div>
+   <aside class="player-gallery-sidebar" id="playerGallery" ${galleryOpen ? '' : 'hidden'} aria-label="Galería de contenidos">
+    <div class="player-gallery-head">
+     <div class="player-gallery-title-row">
+      <span>GALERÍA DE CONTENIDOS</span>
+      <div style="display:flex;align-items:center;gap:4px">
+       <span id="playerGalleryCount">0</span>
+       <button type="button" class="player-btn icon-only" id="playerGalleryCollapseBtn" title="Colapsar galería">${icon('chevronRight')}</button>
+      </div>
+     </div>
+     <div class="player-gallery-search-row">
+      <div class="player-gallery-search-box">
+       ${icon('search')}
+       <input type="search" id="playerGallerySearch" placeholder="Buscar contenido…" aria-label="Buscar en galería" autocomplete="off" spellcheck="false">
+      </div>
+      <select class="player-gallery-type-filter" id="playerGalleryFilter" title="Filtrar por tipo de contenido" aria-label="Filtrar galería por tipo">
+       <option value="all" ${galleryFilter === 'all' ? 'selected' : ''}>Todos</option>
+       <option value="video" ${galleryFilter === 'video' ? 'selected' : ''}>Videos</option>
+       <option value="documento" ${galleryFilter === 'documento' ? 'selected' : ''}>Documentos</option>
+       <option value="audio" ${galleryFilter === 'audio' ? 'selected' : ''}>Audio</option>
+       <option value="imagen" ${galleryFilter === 'imagen' ? 'selected' : ''}>Imágenes</option>
+       <option value="otro" ${galleryFilter === 'otro' ? 'selected' : ''}>Otros</option>
+      </select>
+     </div>
+     <div class="player-gallery-filters" id="playerGalleryTokens" hidden></div>
+     <div class="player-gallery-suggestions" id="playerGallerySuggestions" hidden></div>
+     <div class="player-gallery-search-box player-pdf-search-box" id="playerPdfSearchRow" hidden>
+      ${icon('search')}
+      <input type="search" id="playerPdfSearch" placeholder="Buscar en el documento…" aria-label="Buscar texto en el documento" autocomplete="off">
+     </div>
+    </div>
+    <div class="player-gallery-list" id="playerGalleryList"></div>
+   </aside>
+  </div>
+ `;
+
+ const topbar = $('playerTopbar');
+ topbar.addEventListener('pointerdown', e => {
+   if (e.button === 0 && !e.target.closest('button,input,textarea,select,a,[role="slider"],[role="button"],#playerMainTitle,#playerMainTitleInput,#playerTitleWrap')) {
+   e.preventDefault();
+   api('window_drag', { rx: e.clientX / window.innerWidth, oy: e.clientY }).catch(report);
+  }
+ });
+ topbar.addEventListener('dblclick', e => {
+   if (e.button === 0 && !e.target.closest('button,input,textarea,select,a,[role="slider"],[role="button"],#playerMainTitle,#playerMainTitleInput,#playerTitleWrap')) $('winMax').click();
+ });
+ host.querySelector('[data-player-win-min]').onclick = () => $('winMin').click();
+ host.querySelector('[data-player-win-max]').onclick = async () => {
+  await $('winMax').click();
+  const btn = host.querySelector('[data-player-win-max]');
+  if (btn) btn.innerHTML = icon(maximizedState ? 'winRestore' : 'winMax');
+ };
+ host.querySelector('[data-player-win-close]').onclick = () => $('winClose').click();
+
+ const cleanupCallbacks = [];
+ const panes = [null, null];
+ let activePaneIdx = 0;
+ let splitEnabled = false;
+
+ host.querySelectorAll('[data-player-close]').forEach(b => { b.onclick = closeBaliscoPlayer; });
+ const centerControls = $('playerCenterControls');
+ let documentSearchTimer;
+ $('playerPdfSearch').addEventListener('input', e => {
+  clearTimeout(documentSearchTimer);
+  const query = e.currentTarget.value;
+  if (!query.trim()) return;
+  documentSearchTimer = setTimeout(() => (panes[activePaneIdx] || panes[0])?.searchDocument?.(query), 350);
+ });
+ $('playerPdfSearch').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  clearTimeout(documentSearchTimer);
+  (panes[activePaneIdx] || panes[0])?.searchDocument?.(e.currentTarget.value);
+ });
+ const splitBtn = host.querySelector('[data-player-split]');
+ const favBtn = host.querySelector('[data-player-fav]');
+ const stateContainer = $('playerStateCircles');
+
+ function syncTopbarToActivePane() {
+  const p = panes[activePaneIdx] || panes[0];
+  if (!p) return;
+  centerControls.replaceChildren(p.controlsEl);
+  centerControls.scrollLeft = 0;
+  $('playerPdfSearchRow').hidden = !p.searchDocument;
+  if ($('playerPdfSearch').dataset.paneId !== String(activePaneIdx)) {
+   clearTimeout(documentSearchTimer);
+   $('playerPdfSearch').value = '';
+   $('playerPdfSearch').dataset.paneId = String(activePaneIdx);
+  }
+  for(const selector of ['[data-doc-toc]','[data-doc-annots]','[data-doc-bookmark-add]','[data-doc-two-page]','[data-epub-toc]','[data-epub-cols]','[data-vid-bmk-add]','[data-vid-bmk-list]','[data-aud-bmk-add]','[data-aud-bmk-list]']){
+   const action=p.controlsEl.querySelector(selector);if(action)p.controlsEl.append(action);
+  }
+
+  const itemMeta = p.data || {};
+  const title = itemMeta.title || p.title || 'Contenido';
+  const sub = [
+   itemMeta.author ? itemMeta.author.split(/\r?\n/)[0] : '',
+   itemMeta.ext ? itemMeta.ext.replace(/^\./, '').toUpperCase() : '',
+   itemMeta.size ? bytes(itemMeta.size) : ''
+  ].filter(Boolean).join(' · ');
+
+  const titleText = $('playerMainTitle')?.querySelector('.player-title-text');
+  if (titleText) titleText.textContent = title;
+  else if ($('playerMainTitle')) $('playerMainTitle').textContent = title;
+  if ($('playerMainTitle')) {
+   $('playerMainTitle').title = title;
+   $('playerMainTitle').scrollLeft = 0;
+  }
+  $('playerMainSub').textContent = sub || 'Reproductor integrado de Balisco';
+
+  favBtn.classList.toggle('is-active', !!p.es_favorito);
+  favBtn.setAttribute('aria-pressed', String(!!p.es_favorito));
+  favBtn.title = p.es_favorito ? 'Quitar de favoritos' : 'Marcar como favorito';
+
+  const currentState = p.estado_lectura || 'pendiente';
+  stateContainer.querySelectorAll('[data-player-state-btn]').forEach(btn => {
+   const isCur = btn.dataset.playerStateBtn === currentState;
+   btn.classList.toggle('is-active', isCur);
+   btn.setAttribute('aria-checked', String(isCur));
+  });
+
+  const pane0HasTwoPage = Boolean(panes[0]?.twoPageMode);
+  if (pane0HasTwoPage) {
+   splitBtn.disabled = true;
+   splitBtn.title = 'Desactiva la vista de 2 páginas para usar pantalla dividida';
+  } else {
+   splitBtn.disabled = false;
+   splitBtn.title = splitEnabled ? 'Cerrar pantalla dividida' : 'Dividir pantalla: ver 2 contenidos en paralelo';
+  }
+  splitBtn.classList.toggle('is-active', splitEnabled);
+
+  for (const pane of panes) {
+   if (pane?.syncTwoPageButton) {
+    pane.syncTwoPageButton(splitEnabled);
+   }
+  }
+ }
+
+ function setActivePane(idx) {
+  if (!splitEnabled) idx = 0;
+  if (isEditingTitle) cancelTitleEdit();
+  activePaneIdx = idx;
+  $('playerPane0')?.classList.toggle('is-active-pane', idx === 0);
+  $('playerPane1')?.classList.toggle('is-active-pane', idx === 1);
+  syncTopbarToActivePane();
+ }
+
+ $('playerPane0').addEventListener('pointerdown', () => setActivePane(0));
+ $('playerPane1').addEventListener('pointerdown', () => setActivePane(1));
+
+ $('paneSubbar0').onclick = () => setActivePane(0);
+ $('paneSubbar1').onclick = () => setActivePane(1);
+
+ const mainTitleEl = $('playerMainTitle');
+ const titleInputEl = $('playerMainTitleInput');
+ mainTitleEl.addEventListener('wheel', e => {
+  if (mainTitleEl.scrollWidth <= mainTitleEl.clientWidth) return;
+  e.preventDefault();
+  mainTitleEl.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+ }, { passive: false });
+ mainTitleEl.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  e.stopPropagation();
+  mainTitleEl.scrollLeft += e.key === 'ArrowRight' ? 100 : -100;
+ });
+ let isEditingTitle = false;
+ let isSavingTitle = false;
+
+ function cancelTitleEdit() {
+  if (!isEditingTitle) return;
+  isEditingTitle = false;
+  titleInputEl.hidden = true;
+  mainTitleEl.hidden = false;
+ }
+
+ function startTitleEdit() {
+  const p = panes[activePaneIdx] || panes[0];
+  if (!p || isEditingTitle) return;
+  isEditingTitle = true;
+  const currentTitle = p.data?.title || p.title || '';
+  titleInputEl.value = currentTitle;
+  mainTitleEl.hidden = true;
+  titleInputEl.hidden = false;
+   requestAnimationFrame(() => { titleInputEl.focus(); titleInputEl.select(); });
+ }
+
+ async function commitTitleEdit() {
+  if (!isEditingTitle || isSavingTitle) return;
+  isSavingTitle = true;
+  const p = panes[activePaneIdx] || panes[0];
+  if (!p) {
+   cancelTitleEdit();
+   isSavingTitle = false;
+   return;
+  }
+  const oldTitle = p.data?.title || p.title || '';
+  const nextTitle = titleInputEl.value.trim();
+  if (!nextTitle || nextTitle === oldTitle) {
+   cancelTitleEdit();
+   isSavingTitle = false;
+   return;
+  }
+
+  const titleSpan = mainTitleEl.querySelector('.player-title-text');
+  if (titleSpan) titleSpan.textContent = nextTitle;
+  mainTitleEl.title = nextTitle;
+  titleInputEl.hidden = true;
+  mainTitleEl.hidden = false;
+  isEditingTitle = false;
+
+  try {
+   if (p.containerId) {
+    await api('container_update', { container: p.containerId, id: p.driveId, field: 'titulo', value: nextTitle });
+   } else {
+    await api('update', { id: p.driveId, field: 'titulo', value: nextTitle });
+   }
+   p.title = nextTitle;
+   if (p.data) p.data.title = nextTitle;
+
+   const subbarEl = $(`paneSubbar${activePaneIdx}`);
+   const subbarName = subbarEl?.querySelector('[data-pane-name]');
+   if (subbarName) subbarName.textContent = nextTitle;
+
+   const catItem = catalog.find(c => c.id === p.driveId);
+   if (catItem) catItem.title = nextTitle;
+   renderGallery(false);
+
+   const cardItem = S.items.find(i => i.drive_id === p.driveId);
+   if (cardItem) cardItem.titulo = nextTitle;
+   const resItem = S.resources.find(r => r.id === p.driveId);
+   if (resItem) resItem.title = nextTitle;
+   if (S.selected?.drive_id === p.driveId) {
+    S.selected.titulo = nextTitle;
+    renderDetail(S.selected);
+   }
+   const domCard = $(`item-${p.driveId}`);
+   if (domCard) {
+    const tEl = domCard.querySelector('.card-title') || domCard.querySelector('.item-title') || domCard.querySelector('h3');
+    if (tEl) { tEl.textContent = nextTitle; tEl.title = nextTitle; }
+   const coverTitle=domCard.querySelector('.cover-title');if(coverTitle)coverTitle.textContent=nextTitle.replace(/\.(pdf|epub)$/i,'');
+   }
+   notify('Título modificado', 'success');
+  } catch (err) {
+   if (titleSpan) titleSpan.textContent = oldTitle;
+  mainTitleEl.title = oldTitle;
+   notify(err.message || 'Error al modificar título', 'error');
+  } finally {
+   isSavingTitle = false;
+  }
+ }
+
+ mainTitleEl.onclick = e => { e.stopPropagation(); startTitleEdit(); };
+ mainTitleEl.onkeydown = e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+   e.preventDefault();
+   startTitleEdit();
+  }
+ };
+ titleInputEl.onkeydown = guard(async e => {
+  e.stopPropagation();
+  if (e.key === 'Enter') {
+   e.preventDefault();
+   await commitTitleEdit();
+  } else if (e.key === 'Escape') {
+   e.preventDefault();
+   cancelTitleEdit();
+  }
+ });
+ titleInputEl.onkeyup = e => e.stopPropagation();
+ titleInputEl.onblur = guard(async () => {
+  if (isEditingTitle) await commitTitleEdit();
+ });
+
+ favBtn.onclick = guard(async () => {
+  const p = panes[activePaneIdx] || panes[0];
+  if (!p) return;
+  const next = !p.es_favorito;
+  if (p.containerId) {
+   await api('container_update', { container: p.containerId, id: p.driveId, field: 'es_favorito', value: next });
+  } else {
+   await api('update', { id: p.driveId, field: 'es_favorito', value: next });
+  }
+  p.es_favorito = next ? 1 : 0;
+  if (p.data) p.data.es_favorito = p.es_favorito;
+  favBtn.classList.toggle('is-active', next);
+  favBtn.setAttribute('aria-pressed', String(next));
+  favBtn.title = next ? 'Quitar de favoritos' : 'Marcar como favorito';
+
+  const cardItem = S.items.find(i => i.drive_id === p.driveId);
+  if (cardItem) cardItem.es_favorito = p.es_favorito;
+  const resItem = S.resources.find(r => r.id === p.driveId);
+  if (resItem) resItem.es_favorito = p.es_favorito;
+  if (S.selected?.drive_id === p.driveId) {
+   S.selected.es_favorito = p.es_favorito;
+   renderDetail(S.selected);
+  }
+ });
+
+ stateContainer.onclick = guard(async e => {
+  const btn = e.target.closest('[data-player-state-btn]');
+  if (!btn) return;
+  const val = btn.dataset.playerStateBtn;
+  const p = panes[activePaneIdx] || panes[0];
+  if (!p) return;
+  if (p.containerId) {
+   await api('container_update', { container: p.containerId, id: p.driveId, field: 'estado_lectura', value: val });
+  } else {
+   await api('update', { id: p.driveId, field: 'estado_lectura', value: val });
+  }
+  p.estado_lectura = val;
+  if (p.data) p.data.estado_lectura = val;
+  stateContainer.querySelectorAll('[data-player-state-btn]').forEach(b => {
+   const isCur = b.dataset.playerStateBtn === val;
+   b.classList.toggle('is-active', isCur);
+   b.setAttribute('aria-checked', String(isCur));
+  });
+
+  const cardItem = S.items.find(i => i.drive_id === p.driveId);
+  if (cardItem) {
+   cardItem.estado_lectura = val;
+   const cardEl = S.rows.get(p.driveId);
+   if (cardEl) cardEl.dataset.state = val;
+  }
+  const resItem = S.resources.find(r => r.id === p.driveId);
+  if (resItem) resItem.estado_lectura = val;
+  if (S.selected?.drive_id === p.driveId) {
+   S.selected.estado_lectura = val;
+   renderDetail(S.selected);
+  }
+ });
+
+ host.querySelector('[data-player-open-local]').onclick = guard(async () => {
+  const p = panes[activePaneIdx] || panes[0];
+  if (!p) return;
+  if (p.containerId) await api('container_open', { container: p.containerId, id: p.driveId, mode: 'local' });
+  else await api('open', { id: p.driveId, mode: 'local' });
+ });
+
+ host.querySelector('[data-player-open-web]').onclick = guard(async () => {
+  const p = panes[activePaneIdx] || panes[0];
+  if (!p) return;
+  if (p.containerId) await api('container_open', { container: p.containerId, id: p.driveId, mode: 'web' });
+  else await api('open', { id: p.driveId, mode: 'web' });
+ });
+
+ const toggleImmersive = async () => {
+  if (host.classList.contains('is-immersive')) return;
+  const result = await api('window_set_fullscreen', {enabled:true});
+  if (!result?.fullscreen) throw Error('No se pudo activar la pantalla completa');
+  host.classList.add('is-immersive');
+ };
+ host.querySelector('[data-player-fullscreen]').onclick = guard(toggleImmersive);
+
+ const galToggleBtn = host.querySelector('[data-player-gallery-toggle]');
+ function setGalleryOpen(open) {
+  galleryOpen = Boolean(open);
+  $('playerGallery').hidden = !galleryOpen;
+  const expandTab = $('playerGalleryExpandTab');
+  if (expandTab) expandTab.hidden = galleryOpen;
+  galToggleBtn.classList.toggle('is-active', galleryOpen);
+  galToggleBtn.setAttribute('aria-pressed', String(galleryOpen));
+  localStorage.setItem('balisco.player.galleryOpen', String(galleryOpen));
+ }
+ galToggleBtn.onclick = () => setGalleryOpen(!galleryOpen);
+ $('playerGalleryCollapseBtn')?.addEventListener('click', () => setGalleryOpen(false));
+ $('playerGalleryExpandTab')?.addEventListener('click', () => setGalleryOpen(true));
+
+ const galleryThumbObserver = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+   if (!entry.isIntersecting) continue;
+   const card = entry.target;
+   galleryThumbObserver.unobserve(card);
+   const itemId = card.dataset.galId, itemContainer = card.dataset.galContainer || '';
+   if (!itemId) continue;
+   const p = itemContainer ? api('container_cover', { container: itemContainer, id: itemId }).catch(() => null) : loadCover(itemId).catch(() => null);
+   Promise.resolve(p).then(src => {
+    if (!src || !card.isConnected) return;
+    const thumb = card.querySelector('.player-gallery-thumb');
+    if (thumb) thumb.innerHTML = `<img src="${src}" alt="" decoding="async">`;
+   });
+  }
+ }, { root: $('playerGalleryList'), rootMargin: '300px 0px' });
+ cleanupCallbacks.push(() => galleryThumbObserver.disconnect());
+
+ function getFilteredGallery() {
+  const needle = foldText(galleryQuery);
+  const matches = catalog.filter(item => {
+   if (galleryFilter !== 'all' && item.type !== galleryFilter) return false;
+   if (needle && !foldText(item.title + ' ' + item.author + ' ' + item.format).includes(needle)) return false;
+   const haystack = foldText(item.title + ' ' + item.author + ' ' + item.format);
+   const tags = Array.isArray(item.tags) ? item.tags.map(tag => typeof tag === 'string' ? tag : tag?.nombre || tag?.name || '') : [];
+   for (const raw of galleryTokens) {
+    const token = foldText(raw), value = token.slice(token.indexOf(':') + 1);
+    if (token.startsWith('+') && !tags.some(tag => foldText(tag).includes(token.slice(1)))) return false;
+    if (token.startsWith('-') && tags.some(tag => foldText(tag).includes(token.slice(1)))) return false;
+    if (token === '@favoritos' || token === '@favorites') { if (!item.es_favorito) return false; }
+    else if (token === '@recientes' || token === '@recent') { if (!item.last_opened) return false; }
+    else if (token.startsWith('@tipo:') || token.startsWith('@type:')) { if (!value.split(',').includes(foldText(item.type))) return false; }
+    else if (token.startsWith('@formato:') || token.startsWith('@format:') || token.startsWith('@fmt:')) { if (!value.split(',').includes(foldText(item.format))) return false; }
+    else if (token.startsWith('@autor:') || token.startsWith('@author:')) { if (!foldText(item.author).includes(value)) return false; }
+    else if (token.startsWith('@estado:') || token.startsWith('@status:')) { if (foldText(item.estado_lectura) !== value) return false; }
+    else if (token.startsWith('@idioma:') || token.startsWith('@lang:')) { if (!foldText(item.language).includes(value)) return false; }
+    else if (token.startsWith('@rating:')) { if (!courseMatchRating(item.rating, value)) return false; }
+    else if (token.startsWith('@peso:') || token.startsWith('@size:')) { if (!courseMatchSize(item.size, value)) return false; }
+    else if (token === '@sin:portada' || token === '@without:cover') { if (item.has_cover) return false; }
+    else if (token === '@con:portada' || token === '@with:cover') { if (!item.has_cover) return false; }
+    else if (!token.startsWith('@') && !token.startsWith('+') && !token.startsWith('-') && !haystack.includes(token)) return false;
+   }
+   return true;
+  });
+  const order = [...galleryTokens].reverse().find(token => /^@(orden|sort):/.test(token));
+  if (order) {
+   const value = foldText(order.split(':')[1]);
+   if (value === 'peso' || value === 'size') matches.sort((a,b) => b.size - a.size);
+   else if (value === 'ligero') matches.sort((a,b) => a.size - b.size);
+   else if (value === 'alfabetico' || value === 'alphabetical') matches.sort((a,b) => a.title.localeCompare(b.title));
+   else if (value === 'recientes' || value === 'recent') matches.sort((a,b) => String(b.last_opened).localeCompare(String(a.last_opened)));
+  }
+  return matches;
+ }
+
+ function renderGallery(scrollToActive = false) {
+  galleryThumbObserver.disconnect();
+  const listEl = $('playerGalleryList'), filtered = getFilteredGallery();
+  $('playerGalleryCount').textContent = String(filtered.length);
+
+  if (!filtered.length) {
+   listEl.innerHTML = '<p style="color:var(--muted);font-size:11.5px;text-align:center;padding:24px 8px">Sin contenidos que coincidan con el filtro.</p>';
+   return;
+  }
+
+  const p0Id = panes[0]?.driveId || initialDriveId;
+  const p1Id = splitEnabled ? panes[1]?.driveId : null;
+  const iconByType = { video: 'video', documento: 'document', audio: 'audio', imagen: 'image', otro: 'other' };
+
+  listEl.innerHTML = filtered.map(item => {
+   const isP0 = item.id === p0Id;
+   const isP1 = item.id === p1Id;
+   const cached = getCachedCover(item.id);
+   return `
+    <button type="button" class="player-gallery-card ${isP0 ? 'is-current' : ''} ${isP1 ? 'is-secondary' : ''}" data-gal-id="${esc(item.id)}" data-gal-container="${esc(item.containerId || '')}" data-gal-type="${esc(item.type)}">
+     <div class="player-gallery-thumb">${cached ? `<img src="${cached}" alt="">` : icon(iconByType[item.type] || 'document')}</div>
+     <div class="player-gallery-info">
+      <div class="player-gallery-item-title" title="${esc(item.title)}">${esc(item.title)}</div>
+      <div class="player-gallery-item-meta">
+       <span>${esc(item.format)}</span>
+       <span>·</span>
+       <span>${esc(bytes(item.size))}</span>
+       ${isP0 ? '<span class="player-gallery-badge">Panel 1</span>' : ''}
+       ${isP1 ? '<span class="player-gallery-badge secondary">Panel 2</span>' : ''}
+      </div>
+     </div>
+    </button>
+   `;
+  }).join('');
+
+  for (const card of listEl.querySelectorAll('.player-gallery-card')) {
+   if (!card.querySelector('img')) galleryThumbObserver.observe(card);
+  }
+  if (scrollToActive) {
+   requestAnimationFrame(() => {
+    listEl.querySelector('.player-gallery-card.is-current')?.scrollIntoView({ block: 'center' });
+   });
+  }
+ }
+ renderGallery(true);
+
+ const gallerySearch = $('playerGallerySearch');
+ const gallerySuggestions = $('playerGallerySuggestions');
+ const galleryCommands = ['@tipo:', '@formato:', '@autor:', '@estado:', '@idioma:', '@rating:', '@peso:', '@orden:', '@favoritos', '@recientes', '@sin:portada', '@con:portada'];
+ const galleryValues = {
+  '@tipo:':['documento','video','audio','imagen','otro'],
+  '@estado:':['pendiente','leyendo','leido'],
+  '@orden:':['recientes','peso','ligero','alfabetico'],
+  '@formato:':['pdf','epub','cbz','txt','md','mp4','mp3'],
+  '@rating:':['1','2','3','4','5']
+ };
+ function renderGalleryTokens() {
+  const bar = $('playerGalleryTokens');
+  bar.hidden = !galleryTokens.length;
+  bar.innerHTML = galleryTokens.map((token,index) => `<button type="button" class="chip" data-gallery-token="${index}" title="Quitar filtro">${esc(token)}${icon('close')}</button>`).join('');
+ }
+ function updateGallerySuggestions() {
+  const query = gallerySearch.value.trim().toLowerCase();
+  if (!query.startsWith('@') && !query.startsWith('+') && !query.startsWith('-')) { gallerySuggestions.hidden = true; return; }
+  const prefix = Object.keys(galleryValues).find(key => query.startsWith(key));
+  const options = prefix ? galleryValues[prefix].map(value => prefix + value).filter(value => value.includes(query)) : galleryCommands.filter(value => value.includes(query));
+  gallerySuggestions.innerHTML = options.slice(0,8).map(value => `<button type="button" data-gallery-suggestion="${esc(value)}">${esc(value)}</button>`).join('');
+  gallerySuggestions.hidden = !options.length;
+ }
+ function addGalleryToken(token) {
+  token = token.trim();
+  if (!token || token.endsWith(':')) return;
+  if (!galleryTokens.includes(token)) galleryTokens.push(token);
+  gallerySearch.value = '';
+  galleryQuery = '';
+  gallerySuggestions.hidden = true;
+  renderGalleryTokens();
+  renderGallery(false);
+ }
+ gallerySearch.oninput = e => { galleryQuery = /^[+@-]/.test(e.target.value.trim()) ? '' : e.target.value; updateGallerySuggestions(); renderGallery(false); };
+ gallerySearch.onkeydown = e => {
+  if (e.key === 'Escape') { gallerySuggestions.hidden = true; return; }
+  if (e.key === 'Backspace' && !gallerySearch.value && galleryTokens.length) { galleryTokens.pop(); renderGalleryTokens(); renderGallery(false); return; }
+  if (e.key !== 'Enter') return;
+  const value = gallerySearch.value.trim();
+  if (!value) return;
+  if (value.startsWith('@') || value.startsWith('+') || value.startsWith('-')) {
+   e.preventDefault();
+   addGalleryToken(gallerySuggestions.querySelector('[data-gallery-suggestion]')?.dataset.gallerySuggestion || value);
+  }
+ };
+ gallerySuggestions.onclick = e => { const choice=e.target.closest('[data-gallery-suggestion]'); if (choice) { addGalleryToken(choice.dataset.gallerySuggestion); gallerySearch.focus(); } };
+ $('playerGalleryTokens').onclick = e => { const chip=e.target.closest('[data-gallery-token]'); if (!chip) return; galleryTokens.splice(Number(chip.dataset.galleryToken),1); renderGalleryTokens(); renderGallery(false); gallerySearch.focus(); };
+ $('playerGalleryFilter').onchange = e => { galleryFilter = e.target.value; renderGallery(true); };
+
+ $('playerGalleryList').onclick = guard(async e => {
+  const card = e.target.closest('.player-gallery-card');
+  if (!card) return;
+  const targetId = card.dataset.galId, targetContainer = card.dataset.galContainer || null;
+  const targetPane = splitEnabled ? activePaneIdx : 0;
+  await loadItemIntoPane(targetPane, targetId, targetContainer);
+  setActivePane(targetPane);
+ });
+
+ async function loadItemIntoPane(paneIdx, itemDriveId, itemContainerId = null, preloadedData = null) {
+  if (panes[paneIdx]?.destroy) {
+   try { panes[paneIdx].destroy(); } catch {}
+   panes[paneIdx] = null;
+  }
+  const stageEl = $(`paneStage${paneIdx}`);
+  const tocEl = $(`paneToc${paneIdx}`);
+  const subbarEl = $(`paneSubbar${paneIdx}`);
+  stageEl.innerHTML = '<div class="library-loader"><div class="loading-dots"><span></span><span></span><span></span></div></div>';
+  tocEl.hidden = true;
+  tocEl.replaceChildren();
+
+  let itemData = preloadedData;
+  if (!itemData) {
+   itemData = await api('player_open', { id: itemDriveId, container: itemContainerId });
+  }
+  refreshCoverForOpenedItem(itemDriveId, itemContainerId);
+
+  subbarEl.querySelector('[data-pane-name]').textContent = itemData.title || 'Contenido';
+  subbarEl.querySelector('[data-pane-status]').textContent = '';
+
+  const controlsEl = document.createElement('div');
+  controlsEl.style.display = 'contents';
+
+  let paneInstance;
+  const onPaneStatus = txt => {
+   const statusEl = subbarEl.querySelector('[data-pane-status]');
+   if (statusEl) statusEl.textContent = txt;
+  };
+  const onMutualChange = () => {
+   syncTopbarToActivePane();
+  };
+
+  if (itemData.kind === 'pdf' || itemData.kind === 'cbz') {
+   paneInstance = mountDocumentPane(paneIdx, itemData, itemDriveId, itemContainerId, stageEl, tocEl, controlsEl, onPaneStatus, onMutualChange);
+  } else if (itemData.kind === 'epub') {
+   paneInstance = mountEpubPane(paneIdx, itemData, itemDriveId, itemContainerId, stageEl, tocEl, controlsEl, onPaneStatus, onMutualChange);
+  } else if (itemData.kind === 'video') {
+   paneInstance = mountVideoPane(paneIdx, itemData, itemDriveId, itemContainerId, stageEl, tocEl, controlsEl, onPaneStatus);
+  } else if (itemData.kind === 'audio') {
+   paneInstance = mountAudioPane(paneIdx, itemData, itemDriveId, itemContainerId, stageEl, tocEl, controlsEl, onPaneStatus);
+  } else if (itemData.kind === 'image') {
+   paneInstance = mountImagePane(paneIdx, itemData, itemDriveId, itemContainerId, stageEl, controlsEl, onPaneStatus);
+  } else if (itemData.kind === 'text') {
+   paneInstance = mountTextPane(paneIdx, itemData, itemDriveId, itemContainerId, stageEl, controlsEl, onPaneStatus);
+  } else {
+   stageEl.innerHTML = `
+    <div class="player-unsupported">
+     <h3>Formato sin vista previa directa (${esc(itemData.ext || 'archivo')})</h3>
+     <p>Este archivo puede abrirse directamente con tu aplicación externa preferida o en Google Drive.</p>
+     <div class="player-unsupported-actions">
+      <button type="button" class="player-btn is-active" data-fallback-local>${icon('local')}<span>Abrir en aplicación local</span></button>
+      <button type="button" class="player-btn" data-fallback-web>${icon('drive')}<span>Abrir en Drive</span></button>
+     </div>
+    </div>
+   `;
+   stageEl.querySelector('[data-fallback-local]').onclick = () => host.querySelector('[data-player-open-local]').click();
+   stageEl.querySelector('[data-fallback-web]').onclick = () => host.querySelector('[data-player-open-web]').click();
+   paneInstance = {
+    paneIdx,
+    data: itemData,
+    driveId: itemDriveId,
+    containerId: itemContainerId,
+    controlsEl,
+    es_favorito: itemData.es_favorito,
+    estado_lectura: itemData.estado_lectura,
+    destroy: () => { stageEl.replaceChildren(); }
+   };
+  }
+
+  paneInstance.paneIdx = paneIdx;
+  paneInstance.data = itemData;
+  paneInstance.driveId = itemDriveId;
+  paneInstance.containerId = itemContainerId;
+  paneInstance.controlsEl = controlsEl;
+  paneInstance.es_favorito = itemData.es_favorito;
+  paneInstance.estado_lectura = itemData.estado_lectura;
+  panes[paneIdx] = paneInstance;
+
+  renderGallery(false);
+  if (activePaneIdx === paneIdx) syncTopbarToActivePane();
+  return paneInstance;
+ }
+
+ async function toggleSplit(forceState) {
+  const next = typeof forceState === 'boolean' ? forceState : !splitEnabled;
+  if (next === splitEnabled) return;
+
+  if (next && panes[0]?.twoPageMode) {
+   if (panes[0].toggleTwoPage) panes[0].toggleTwoPage(false);
+  }
+
+  splitEnabled = next;
+  const hostSplit = $('playerSplitHost');
+  const pane1 = $('playerPane1');
+  const resizer = $('playerSplitResizer');
+  const sub0 = $('paneSubbar0');
+
+  hostSplit.classList.toggle('is-split', splitEnabled);
+  pane1.hidden = !splitEnabled;
+  resizer.hidden = !splitEnabled;
+  sub0.hidden = !splitEnabled;
+
+  if (splitEnabled) {
+   if (!panes[1]) {
+    const filtered = getFilteredGallery();
+    const curIdx = filtered.findIndex(it => it.id === panes[0]?.driveId);
+    let peer = (curIdx >= 0 && curIdx < filtered.length - 1) ? filtered[curIdx + 1] : (filtered[0] || null);
+    if (!peer) peer = { id: panes[0]?.driveId, containerId: panes[0]?.containerId };
+    await loadItemIntoPane(1, peer.id, peer.containerId);
+   }
+   setActivePane(1);
+   panes[0]?.fitWidth?.();
+   panes[1]?.fitWidth?.();
+   notify('Pantalla dividida activa: el contenido de la galería se abrirá en el panel activo');
+  } else {
+   if (panes[1]?.destroy) {
+    try { panes[1].destroy(); } catch {}
+    panes[1] = null;
+   }
+   $('playerPane0').style.flex = '1 1 100%';
+   setActivePane(0);
+  }
+  syncTopbarToActivePane();
+  renderGallery(false);
+ }
+
+ splitBtn.onclick = () => toggleSplit();
+ host.querySelector('[data-close-split]').onclick = () => toggleSplit(false);
+
+ const resizer = $('playerSplitResizer');
+ let splitDrag = false;
+ resizer.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  splitDrag = true;
+  resizer.classList.add('is-dragging');
+  resizer.setPointerCapture(e.pointerId);
+ });
+ resizer.addEventListener('pointermove', e => {
+  if (!splitDrag) return;
+  const hostRect = $('playerSplitHost').getBoundingClientRect();
+  const pct = Math.max(20, Math.min(80, ((e.clientX - hostRect.left) / hostRect.width) * 100));
+  $('playerPane0').style.flex = `0 0 ${pct}%`;
+  $('playerPane1').style.flex = `1 1 ${100 - pct}%`;
+ });
+ const endSplitDrag = () => { splitDrag = false; resizer.classList.remove('is-dragging'); };
+ resizer.addEventListener('pointerup', endSplitDrag);
+ resizer.addEventListener('pointercancel', endSplitDrag);
+
+ await loadItemIntoPane(0, initialDriveId, initialContainerId, initialData);
+ setActivePane(0);
+ if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  host.querySelector('#playerTopbar')?.animate([{opacity:0,transform:'translateY(-12px)'},{opacity:1,transform:'translateY(0)'}],{duration:420,easing:'cubic-bezier(.16,1,.3,1)'});
+  host.querySelector('#playerBody')?.animate([{opacity:0,transform:'translateY(18px) scale(.985)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:480,easing:'cubic-bezier(.16,1,.3,1)'});
+ }
+
+ const onKey = e => {
+  if (host.hidden || $('dialog')?.open || $('coverDialog')?.open) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+   const search = $('playerPdfSearch');
+   if (!(panes[activePaneIdx] || panes[0])?.searchDocument) return;
+   e.preventDefault(); e.stopImmediatePropagation();
+   setGalleryOpen(true);
+   search.focus();
+   search.select();
+   return;
+  }
+  const inInput = e.target instanceof Element && e.target.matches('input,textarea,select,[contenteditable]');
+  if (e.key === 'Escape') {
+   if (host.classList.contains('is-immersive')) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    api('window_set_fullscreen', {enabled:false}).catch(report).finally(() => host.classList.remove('is-immersive'));
+    return;
+   }
+   if (e.target === titleInputEl) return;
+   const openFilterMenu = document.querySelector('.player-filter-menu:not([hidden])');
+   if (openFilterMenu) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    openFilterMenu.closeMenu?.();
+    return;
+   }
+   e.preventDefault(); e.stopImmediatePropagation();
+   if (inInput) { e.target.blur(); return; }
+   closeBaliscoPlayer();
+   return;
+  }
+  if (inInput) return;
+  if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+   e.preventDefault();
+   if (!host.classList.contains('is-immersive')) toggleImmersive().catch(report);
+  }
+ };
+ window.addEventListener('keydown', onKey, true);
+ cleanupCallbacks.push(() => window.removeEventListener('keydown', onKey, true));
+ cleanupCallbacks.push(() => {
+  panes[0]?.destroy?.();
+  panes[1]?.destroy?.();
+ });
+ activePlayerCleanup = () => {
+  for (const fn of cleanupCallbacks) { try { fn(); } catch {} }
+ };
+}
+
+function createPlayerThemeMenu(trigger, options, selected, defaultValue, onChange) {
+ const menu = document.createElement('div');
+ menu.className = 'player-filter-menu';
+ menu.setAttribute('role', 'menu');
+ menu.setAttribute('aria-label', 'Tema de lectura');
+ menu.hidden = true;
+ menu.innerHTML = options.map(([value, label, symbol]) => `<button type="button" role="menuitemradio" data-filter-value="${value}" aria-label="${label}" title="${label}" aria-checked="${selected === value}">${icon(symbol)}</button>`).join('');
+ document.body.append(menu);
+ const close = () => { menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); };
+ menu.closeMenu = close;
+ const onOutside = e => { if (!menu.contains(e.target) && !trigger.contains(e.target)) close(); };
+ document.addEventListener('pointerdown', onOutside, true);
+ trigger.classList.toggle('is-active', selected !== defaultValue);
+ trigger.onclick = () => {
+  if (!menu.hidden) { close(); return; }
+  const rect = trigger.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 5}px`;
+  menu.style.left = `${rect.left}px`;
+  menu.style.width = `${rect.width}px`;
+  menu.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  menu.querySelector('[aria-checked="true"]')?.focus();
+ };
+ menu.onclick = e => {
+  const option = e.target.closest('[data-filter-value]');
+  if (!option) return;
+  selected = option.dataset.filterValue;
+  menu.querySelectorAll('[data-filter-value]').forEach(button => button.setAttribute('aria-checked', String(button === option)));
+  trigger.classList.toggle('is-active', selected !== defaultValue);
+  onChange(selected);
+  close();
+  trigger.focus();
+ };
+ return () => { document.removeEventListener('pointerdown', onOutside, true); menu.remove(); };
+}
+
+function mountDocumentPane(paneIdx, docData, docDriveId, docContainerId, stageEl, tocEl, controlsEl, onStatus, onMutualChange) {
+ let filter = localStorage.getItem('balisco.reader.filter') || 'none';
+ let sidebarTab = 'toc';
+ let twoPageMode = false;
+ const count = Math.max(1, Number(docData.page_count) || 1);
+ const sizes = Array.isArray(docData.page_sizes) && docData.page_sizes.length ? docData.page_sizes : Array.from({ length: count }, () => [612, 792]);
+ const storageKey = `balisco.reader.page.${docDriveId}${paneIdx === 1 ? '.split' : ''}`;
+ let currentPage = Math.max(0, Math.min(count - 1, (Number(localStorage.getItem(storageKey)) || 1) - 1));
+ let zoom = Number(localStorage.getItem('balisco.reader.zoom')) || (paneIdx === 1 ? 0.95 : 1.18);
+ const annotations = loadItemAnnotations(docDriveId);
+
+ controlsEl.innerHTML = `
+  <button type="button" class="player-btn icon-only" data-doc-toc title="Índice de contenidos">${icon('list')}</button>
+  <button type="button" class="player-btn icon-only" data-doc-annots title="Ver marcadores">${icon('bookmark')}</button>
+  <button type="button" class="player-btn icon-only" data-doc-bookmark-add title="Añadir marcador en la página actual (Ctrl+D)">${icon('plus')}</button>
+  <div class="player-pill-group">
+   <button type="button" class="player-btn icon-only" data-doc-prev title="Página anterior">${icon('chevronLeft')}</button>
+   <input type="number" class="player-page-input" data-doc-page min="1" max="${count}" value="${currentPage + 1}" aria-label="Página actual">
+   <span class="player-page-indicator" data-doc-total>/ ${count}</span>
+   <button type="button" class="player-btn icon-only" data-doc-next title="Página siguiente">${icon('chevronRight')}</button>
+  </div>
+  <div class="player-pill-group">
+   <button type="button" class="player-btn icon-only" data-doc-zoom-out title="Alejar (Ctrl+-)">−</button>
+   <button type="button" class="player-btn" data-doc-zoom-label title="Restablecer zoom">${Math.round(zoom * 100)}%</button>
+   <button type="button" class="player-btn icon-only" data-doc-zoom-in title="Acercar (Ctrl++)">+</button>
+   <button type="button" class="player-btn" data-doc-fit="width" title="Ajustar al ancho">Ancho</button>
+   <button type="button" class="player-btn" data-doc-fit="page" title="Ajustar página completa">Página</button>
+  </div>
+  <button type="button" class="player-btn icon-only" data-doc-two-page title="Ver dos páginas lado a lado (Doble página)">${icon('columns')}</button>
+  <button type="button" class="player-btn icon-only player-filter-button" data-doc-filter-trigger title="Tema de lectura" aria-label="Tema de lectura" aria-haspopup="menu" aria-expanded="false">${icon('theme')}</button>
+ `;
+
+ const viewport = document.createElement('div');
+ viewport.className = 'player-doc-viewport';
+ viewport.dataset.filter = filter;
+ viewport.tabIndex = 0;
+ stageEl.replaceChildren(viewport);
+
+ const slots = [];
+ const loadedPages = new Map();
+ const loadedTexts = new Set();
+
+ for (let i = 0; i < count; i++) {
+  const slot = document.createElement('div');
+  slot.className = 'pdf-page-slot';
+  slot.dataset.page = String(i);
+  const txtLayer = document.createElement('div');
+  txtLayer.className = 'pdf-text-layer';
+  const num = document.createElement('span');
+  num.className = 'page-number-watermark';
+  num.textContent = `${i + 1} / ${count}`;
+  slot.append(txtLayer, num);
+  viewport.append(slot);
+  slots.push(slot);
+ }
+
+ const baseWidth = 740;
+ function updateSlotSizes() {
+  for (let i = 0; i < count; i++) {
+   const [pw, ph] = sizes[i] || [612, 792];
+   const ratio = ph / Math.max(1, pw);
+   const w = Math.round(baseWidth * zoom);
+   const h = Math.round(w * ratio);
+   slots[i].style.width = w + 'px';
+   slots[i].style.height = h + 'px';
+  }
+ }
+ updateSlotSizes();
+
+ function loadPageContent(index) {
+  const slot = slots[index];
+  if (!slot) return;
+  const dpr = Math.max(1.5, window.devicePixelRatio || 1);
+  const effectiveZoom = zoom;
+  const scaleKey = docData.kind === 'pdf' ? Math.max(2.0, Math.min(4.0, effectiveZoom * dpr * 1.35)).toFixed(2) : '1';
+  const existing = loadedPages.get(index);
+  if (!existing || existing.scaleKey !== scaleKey) {
+   const img = existing?.img || new Image();
+   img.decoding = 'async';
+   img.alt = `Página ${index + 1}`;
+   img.src = docData.kind === 'pdf'
+    ? `${docData.page_url_prefix}${index}${docData.page_url_suffix}&scale=${scaleKey}`
+    : `${docData.page_url_prefix}${index}${docData.page_url_suffix}`;
+   if (!existing) slot.prepend(img);
+   loadedPages.set(index, { img, scaleKey });
+  }
+  if (docData.kind === 'pdf' && !loadedTexts.has(index)) {
+   loadedTexts.add(index);
+   api('player_pdf_text', { ticket: docData.ticket, page: index }).then(res => {
+    if (!slot.isConnected) return;
+    const txtLayer = slot.querySelector('.pdf-text-layer');
+    txtLayer.replaceChildren();
+    for (const sp of (res.spans || [])) {
+     const el = document.createElement('span');
+     el.className = 'pdf-text-span';
+     el.textContent = sp.t;
+     el.style.cssText = `left:${sp.x}%;top:${sp.y}%;width:${sp.w}%;height:${sp.h}%;font-size:${Math.max(9, Math.round(sp.h * 5.5))}px`;
+     txtLayer.append(el);
+    }
+   }).catch(() => {});
+  }
+ }
+
+ function pruneDistantPages(centerIdx) {
+  for (const [idx, entry] of loadedPages) {
+   if (Math.abs(idx - centerIdx) > 8) {
+    entry.img.remove();
+    loadedPages.delete(idx);
+   }
+  }
+ }
+
+ const io = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+   if (entry.isIntersecting) loadPageContent(Number(entry.target.dataset.page));
+  }
+ }, { root: viewport, rootMargin: '1000px 0px' });
+ slots.forEach(s => io.observe(s));
+
+ function updateSubbar() {
+  onStatus(`Pág. ${instance.currentPage + 1} / ${count}`);
+  const input = controlsEl.querySelector('[data-doc-page]');
+  if (input && document.activeElement !== input) input.value = String(instance.currentPage + 1);
+ }
+
+ viewport.addEventListener('scroll', () => {
+  const mid = viewport.scrollTop + viewport.clientHeight * 0.35;
+  let best = 0, bestDist = Infinity;
+  for (let i = 0; i < slots.length; i++) {
+   const top = slots[i].offsetTop, bottom = top + slots[i].offsetHeight;
+   if (mid >= top && mid <= bottom) { best = i; break; }
+   const d = Math.abs(top - mid);
+   if (d < bestDist) { bestDist = d; best = i; }
+  }
+  if (best !== instance.currentPage) {
+   instance.currentPage = best;
+   localStorage.setItem(storageKey, String(best + 1));
+   updateSubbar();
+   pruneDistantPages(best);
+   if (!tocEl.hidden) renderSidebar();
+  }
+ }, { passive: true });
+
+ viewport.addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  instance.applyZoom(instance.zoom + (e.deltaY < 0 ? 0.12 : -0.12));
+ }, { passive: false });
+
+ function renderSidebar(searchResults = null, searchQuery = '') {
+  const tocList = Array.isArray(docData.toc) ? docData.toc : [];
+  const bookmarks = annotations.filter(a => a.type === 'bookmark');
+  tocEl.innerHTML = `
+   <div class="player-toc-tabs">
+    <button type="button" data-side-tab="toc" class="${sidebarTab === 'toc' ? 'is-active' : ''}">Índice (${tocList.length})</button>
+    <button type="button" data-side-tab="annots" class="${sidebarTab === 'annots' ? 'is-active' : ''}">Marcadores (${bookmarks.length})</button>
+    ${searchResults ? `<button type="button" data-side-tab="search" class="${sidebarTab === 'search' ? 'is-active' : ''}">Búsqueda (${searchResults.length})</button>` : ''}
+   </div>
+   <div class="player-toc-list" id="docSideList${paneIdx}"></div>
+  `;
+  const listEl = tocEl.querySelector(`#docSideList${paneIdx}`);
+  if (sidebarTab === 'toc') {
+   listEl.innerHTML = tocList.length
+    ? tocList.map(entry => `
+      <button type="button" class="player-toc-item ${entry.page === instance.currentPage ? 'is-active' : ''}" data-toc-page="${entry.page}" data-level="${Math.min(4, entry.level || 1)}">
+       <span>${esc(entry.title)}</span>
+       <span class="player-toc-page">${entry.page + 1}</span>
+      </button>
+    `).join('')
+    : '<p style="font-size:11.5px;color:var(--muted);padding:12px">Este documento no incluye tabla de índice embebida.</p>';
+  } else if (sidebarTab === 'annots') {
+   listEl.innerHTML = bookmarks.length
+    ? bookmarks.map(a => `
+      <div class="player-annotation-card" data-annot-page="${a.page}">
+       <div class="player-annotation-head">
+        <span>📌 Marcador · Pág. ${a.page + 1}</span>
+        <button type="button" class="player-btn icon-only" data-annot-del="${esc(a.id)}" title="Eliminar" style="width:20px;height:20px">${icon('close')}</button>
+       </div>
+       <div class="player-annotation-text" style="--annot-color:${a.color || '#facc15'}">${esc(a.text || a.label || 'Página marcada')}</div>
+      </div>
+    `).join('')
+    : '<p style="font-size:11.5px;color:var(--muted);padding:12px">Aún no hay marcadores.</p>';
+  } else if (sidebarTab === 'search' && searchResults) {
+   listEl.innerHTML = searchResults.length
+    ? searchResults.map(m => `
+      <div class="player-annotation-card" data-annot-page="${m.page}">
+       <div class="player-annotation-head"><span>Pág. ${m.page + 1}</span><span>${m.count} coincidencia${m.count > 1 ? 's' : ''}</span></div>
+       <div class="player-annotation-text" style="--annot-color:var(--accent)">${esc(m.snippet)}</div>
+      </div>
+    `).join('')
+    : `<p style="font-size:11.5px;color:var(--muted);padding:12px">Sin coincidencias para “${esc(searchQuery)}”.</p>`;
+  }
+ }
+
+ tocEl.onclick = e => {
+  const tabBtn = e.target.closest('[data-side-tab]');
+  if (tabBtn) { sidebarTab = tabBtn.dataset.sideTab; renderSidebar(); return; }
+  const delBtn = e.target.closest('[data-annot-del]');
+  if (delBtn) {
+   e.stopPropagation();
+   const id = delBtn.dataset.annotDel;
+   const idx = annotations.findIndex(a => a.id === id);
+   if (idx >= 0) {
+    annotations.splice(idx, 1);
+    saveItemAnnotations(docDriveId, annotations);
+    renderSidebar();
+   }
+   return;
+  }
+  const pageItem = e.target.closest('[data-toc-page],[data-annot-page]');
+  if (pageItem) {
+   const page = Number(pageItem.dataset.tocPage ?? pageItem.dataset.annotPage);
+   instance.goToPage(page);
+  }
+ };
+
+ const tocBtn = controlsEl.querySelector('[data-doc-toc]');
+ const annotsBtn = controlsEl.querySelector('[data-doc-annots]');
+ const twoPageBtn = controlsEl.querySelector('[data-doc-two-page]');
+
+ tocBtn.onclick = () => {
+  if (!tocEl.hidden && sidebarTab === 'toc') {
+   tocEl.hidden = true;
+   tocBtn.classList.remove('is-active');
+  } else {
+   sidebarTab = 'toc';
+   tocEl.hidden = false;
+   tocBtn.classList.add('is-active');
+   annotsBtn.classList.remove('is-active');
+   renderSidebar();
+  }
+ };
+
+ annotsBtn.onclick = () => {
+  if (!tocEl.hidden && sidebarTab === 'annots') {
+   tocEl.hidden = true;
+   annotsBtn.classList.remove('is-active');
+  } else {
+   sidebarTab = 'annots';
+   tocEl.hidden = false;
+   annotsBtn.classList.add('is-active');
+   tocBtn.classList.remove('is-active');
+   renderSidebar();
+  }
+ };
+
+ controlsEl.querySelector('[data-doc-bookmark-add]').onclick = () => {
+  const label = prompt(`Nombre del marcador (Página ${instance.currentPage + 1}):`, `Página ${instance.currentPage + 1}`);
+  if (label === null) return;
+  annotations.unshift({
+   id: String(Date.now()),
+   type: 'bookmark',
+   page: instance.currentPage,
+   text: label.trim() || `Página ${instance.currentPage + 1}`,
+   color: '#60a5fa'
+  });
+  saveItemAnnotations(docDriveId, annotations);
+  sidebarTab = 'annots';
+  tocEl.hidden = false;
+  annotsBtn.classList.add('is-active');
+  tocBtn.classList.remove('is-active');
+  renderSidebar();
+  notify(`Marcador guardado en página ${instance.currentPage + 1}`);
+ };
+
+ const searchDocument = guard(async q => {
+  q = q.trim();
+  if (!q || docData.kind !== 'pdf') return;
+  sidebarTab = 'search';
+  tocEl.hidden = false;
+  tocEl.innerHTML = '<div class="library-loader"><div class="loading-dots"><span></span><span></span><span></span></div></div>';
+  const res = await api('player_pdf_search', { ticket: docData.ticket, query: q });
+  renderSidebar(res.matches || [], q);
+  if (res.matches?.length) instance.goToPage(res.matches[0].page);
+ });
+
+ function toggleTwoPage(forceState) {
+  twoPageMode = typeof forceState === 'boolean' ? forceState : !twoPageMode;
+  viewport.classList.toggle('is-two-page', twoPageMode);
+  twoPageBtn.classList.toggle('is-active', twoPageMode);
+  instance.twoPageMode = twoPageMode;
+  if (twoPageMode) {
+   instance.fitPage();
+  } else {
+   updateSlotSizes();
+  }
+  loadPageContent(instance.currentPage);
+  if (instance.currentPage + 1 < count) loadPageContent(instance.currentPage + 1);
+  onMutualChange?.();
+ }
+ twoPageBtn.onclick = () => toggleTwoPage();
+
+ const pageInput = controlsEl.querySelector('[data-doc-page]');
+ controlsEl.querySelector('[data-doc-prev]').onclick = () => instance.goToPage(instance.currentPage - (twoPageMode ? 2 : 1));
+ controlsEl.querySelector('[data-doc-next]').onclick = () => instance.goToPage(instance.currentPage + (twoPageMode ? 2 : 1));
+ pageInput.onchange = () => instance.goToPage((Number(pageInput.value) || 1) - 1);
+ pageInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); instance.goToPage((Number(pageInput.value) || 1) - 1); pageInput.blur(); } };
+
+ controlsEl.querySelector('[data-doc-zoom-out]').onclick = () => instance.applyZoom(instance.zoom - 0.15);
+ controlsEl.querySelector('[data-doc-zoom-in]').onclick = () => instance.applyZoom(instance.zoom + 0.15);
+ controlsEl.querySelector('[data-doc-zoom-label]').onclick = () => instance.applyZoom(twoPageMode ? 0.75 : 1.18);
+ controlsEl.querySelector('[data-doc-fit="width"]').onclick = () => instance.fitWidth();
+ controlsEl.querySelector('[data-doc-fit="page"]').onclick = () => instance.fitPage();
+
+ const destroyThemeMenu = createPlayerThemeMenu(
+  controlsEl.querySelector('[data-doc-filter-trigger]'),
+  [['none', 'Original', 'themeLight'], ['sepia', 'Sepia', 'theme'], ['night', 'Noche', 'themeDark']],
+  filter, 'none', value => {
+   filter = value;
+   viewport.dataset.filter = filter;
+   localStorage.setItem('balisco.reader.filter', filter);
+  }
+ );
+ const instance = {
+  searchDocument: docData.kind === 'pdf' ? searchDocument : null,
+  paneIdx,
+  data: docData,
+  driveId: docDriveId,
+  count,
+  currentPage,
+  zoom,
+  twoPageMode,
+  toggleTwoPage,
+  syncTwoPageButton: splitIsActive => {
+   if (splitIsActive) {
+    twoPageBtn.disabled = true;
+    twoPageBtn.title = 'Desactiva la pantalla dividida para ver 2 páginas lado a lado';
+   } else {
+    twoPageBtn.disabled = false;
+    twoPageBtn.title = 'Ver dos páginas lado a lado (Doble página)';
+   }
+  },
+  goToPage(idx) {
+   const target = Math.max(0, Math.min(count - 1, idx));
+   instance.currentPage = target;
+   localStorage.setItem(storageKey, String(target + 1));
+   updateSubbar();
+   loadPageContent(target);
+   if (target + 1 < count) loadPageContent(target + 1);
+   slots[target]?.scrollIntoView({ behavior: 'auto', block: 'start' });
+  },
+  applyZoom(nextZoom) {
+   const clamped = Math.max(0.45, Math.min(3.2, nextZoom));
+   const ratio = (viewport.scrollTop + viewport.clientHeight * 0.3) / Math.max(1, viewport.scrollHeight);
+   instance.zoom = zoom = clamped;
+   localStorage.setItem('balisco.reader.zoom', String(clamped));
+   controlsEl.querySelector('[data-doc-zoom-label]').textContent = `${Math.round(clamped * 100)}%`;
+   updateSlotSizes();
+   viewport.scrollTop = ratio * viewport.scrollHeight - viewport.clientHeight * 0.3;
+   loadPageContent(instance.currentPage);
+   if (twoPageMode && instance.currentPage + 1 < count) loadPageContent(instance.currentPage + 1);
+  },
+  fitWidth() {
+   if (twoPageMode) {
+    const avail = Math.max(300, viewport.clientWidth - 64);
+    instance.applyZoom((avail / 2) / baseWidth);
+   } else {
+    const avail = Math.max(260, viewport.clientWidth - 48);
+    instance.applyZoom(avail / baseWidth);
+   }
+  },
+  fitPage() {
+   const [pw, ph] = sizes[instance.currentPage] || [612, 792];
+   const ratio = ph / Math.max(1, pw);
+   const availH = Math.max(240, viewport.clientHeight - 48);
+   if (twoPageMode) {
+    const availW = Math.max(300, viewport.clientWidth - 64);
+    const zoomH = availH / (baseWidth * ratio);
+    const zoomW = (availW / 2) / baseWidth;
+    instance.applyZoom(Math.min(zoomH, zoomW));
+   } else {
+    instance.applyZoom(availH / (baseWidth * ratio));
+   }
+  },
+  destroy() {
+   destroyThemeMenu();
+   io.disconnect();
+   viewport.remove();
+   tocEl.replaceChildren();
+   controlsEl.remove();
+  }
+ };
+
+ updateSubbar();
+ requestAnimationFrame(() => {
+  if (currentPage > 0) instance.goToPage(currentPage);
+  else loadPageContent(0);
+ });
+ return instance;
+}
+
+function mountEpubPane(paneIdx, data, driveId, containerId, stageEl, tocEl, controlsEl, onStatus, onMutualChange) {
+ const total = Math.max(1, Number(data.chapter_count) || 1);
+ const storageKey = `balisco.epub.chapter.${driveId}`;
+ let currentChapter = Math.max(0, Math.min(total - 1, Number(localStorage.getItem(storageKey)) || 0));
+ let fontSize = Number(localStorage.getItem('balisco.epub.fontSize')) || 19;
+ let theme = localStorage.getItem('balisco.epub.theme') || 'dark';
+ let twoCols = localStorage.getItem('balisco.epub.twoCols') === 'true';
+ const tocItems = Array.isArray(data.chapters) && data.chapters.length ? data.chapters : Array.from({ length: total }, (_, i) => ({ title: `Sección ${i + 1}`, index: i }));
+
+ controlsEl.innerHTML = `
+  <button type="button" class="player-btn icon-only" data-epub-toc title="Índice">${icon('list')}</button>
+  <div class="player-pill-group">
+   <button type="button" class="player-btn icon-only" data-epub-prev title="Anterior">${icon('chevronLeft')}</button>
+   <span class="player-page-indicator" data-epub-indicator>${currentChapter + 1} / ${total}</span>
+   <button type="button" class="player-btn icon-only" data-epub-next title="Siguiente">${icon('chevronRight')}</button>
+  </div>
+  <button type="button" class="player-btn icon-only ${twoCols ? 'is-active' : ''}" data-epub-cols title="Ver a 2 páginas">${icon('columns')}</button>
+  <div class="player-pill-group">
+   <button type="button" class="player-btn" data-epub-font="-1" title="Reducir letra">A−</button>
+   <button type="button" class="player-btn" data-epub-font="1" title="Aumentar letra">A+</button>
+  </div>
+  <button type="button" class="player-btn icon-only player-filter-button" data-epub-theme title="Tema de lectura" aria-label="Tema de lectura" aria-haspopup="menu" aria-expanded="false">${icon('theme')}</button>
+ `;
+
+ const viewport = document.createElement('div');
+ viewport.className = 'player-book-viewport' + (twoCols ? ' is-two-columns' : '');
+ viewport.dataset.bookTheme = theme;
+ viewport.style.setProperty('--book-font-size', fontSize + 'px');
+ const article = document.createElement('article');
+ article.className = 'player-book-article';
+ viewport.append(article);
+ stageEl.replaceChildren(viewport);
+
+ function renderTocList() {
+  tocEl.innerHTML = `
+   <div class="player-toc-header"><span>Índice (${tocItems.length})</span></div>
+   <div class="player-toc-list">
+    ${tocItems.map(entry => `<button type="button" class="player-toc-item ${entry.index === currentChapter ? 'is-active' : ''}" data-epub-chapter-btn="${entry.index}" title="${esc(entry.title)}"><span>${esc(entry.title)}</span><span class="player-toc-page">${entry.index + 1}</span></button>`).join('')}
+   </div>
+  `;
+ }
+ renderTocList();
+
+ const tocBtn = controlsEl.querySelector('[data-epub-toc]');
+ const colsBtn = controlsEl.querySelector('[data-epub-cols]');
+ tocBtn.onclick = () => {
+  tocEl.hidden = !tocEl.hidden;
+  tocBtn.classList.toggle('is-active', !tocEl.hidden);
+ };
+ tocEl.onclick = e => {
+  const btn = e.target.closest('[data-epub-chapter-btn]');
+  if (btn) loadChapter(Number(btn.dataset.epubChapterBtn));
+ };
+
+ const searchDocument = guard(async q => {
+  q = q.trim();
+  if (!q) return;
+  tocEl.hidden = false;
+  tocBtn.classList.add('is-active');
+  tocEl.innerHTML = '<div class="library-loader"><div class="loading-dots"><span></span><span></span><span></span></div></div>';
+  const res = await api('player_epub_search', { ticket: data.ticket, query: q });
+  const matches = res.matches || [];
+  tocEl.innerHTML = `
+   <div class="player-toc-header">
+    <span>Resultados (${matches.length})</span>
+    <button type="button" class="player-btn icon-only" id="epubBackToc${paneIdx}" title="Volver al índice" style="width:24px;height:24px">${icon('list')}</button>
+   </div>
+   <div class="player-toc-list">
+    ${matches.length ? matches.map(m => `
+      <div class="player-annotation-card" data-epub-chapter-btn="${m.chapter}">
+       <div class="player-annotation-head"><span>${esc(m.title)}</span><span>${m.count}</span></div>
+       <div class="player-annotation-text">${esc(m.snippet)}</div>
+      </div>
+    `).join('') : '<p style="font-size:11.5px;color:var(--muted);padding:12px">Sin coincidencias.</p>'}
+   </div>
+  `;
+  $(`epubBackToc${paneIdx}`)?.addEventListener('click', renderTocList);
+ });
+
+ async function loadChapter(index) {
+  const target = Math.max(0, Math.min(total - 1, index));
+  currentChapter = target;
+  localStorage.setItem(storageKey, String(target));
+  controlsEl.querySelector('[data-epub-indicator]').textContent = `${target + 1} / ${total}`;
+  onStatus(`${target + 1} / ${total}`);
+  tocEl.querySelectorAll('[data-epub-chapter-btn]').forEach(btn => {
+   btn.classList.toggle('is-active', Number(btn.dataset.epubChapterBtn) === target);
+  });
+  article.innerHTML = '<div class="library-loader" role="status"><div class="loading-dots"><span></span><span></span><span></span></div></div>';
+  const res = await api('player_epub_chapter', { ticket: data.ticket, index: target });
+  article.innerHTML = (res.html || '<p>Contenido vacío.</p>') + `
+   <div style="display:flex;justify-content:space-between;margin-top:42px;padding-top:20px;border-top:1px solid rgba(128,128,128,.25)">
+    ${target > 0 ? `<button type="button" class="player-btn icon-only back-pill" data-epub-jump="${target - 1}" title="Anterior">${icon('chevronLeft')}</button>` : '<span></span>'}
+    ${target < total - 1 ? `<button type="button" class="player-btn icon-only back-pill" data-epub-jump="${target + 1}" title="Siguiente">${icon('chevronRight')}</button>` : ''}
+   </div>
+  `;
+  viewport.scrollTop = 0;
+ }
+
+ article.onclick = e => {
+  const jump = e.target.closest('[data-epub-jump]');
+  if (jump) { e.preventDefault(); loadChapter(Number(jump.dataset.epubJump)); return; }
+  const link = e.target.closest('[data-epub-chapter]');
+  if (link) { e.preventDefault(); loadChapter(Number(link.dataset.epubChapter)); }
+ };
+
+ controlsEl.querySelector('[data-epub-prev]').onclick = () => loadChapter(currentChapter - 1);
+ controlsEl.querySelector('[data-epub-next]').onclick = () => loadChapter(currentChapter + 1);
+
+ function toggleColumns(forceState) {
+  twoCols = typeof forceState === 'boolean' ? forceState : !twoCols;
+  viewport.classList.toggle('is-two-columns', twoCols);
+  colsBtn.classList.toggle('is-active', twoCols);
+  localStorage.setItem('balisco.epub.twoCols', String(twoCols));
+  instance.twoPageMode = twoCols;
+  onMutualChange?.();
+ }
+ colsBtn.onclick = () => toggleColumns();
+
+ controlsEl.querySelectorAll('[data-epub-font]').forEach(btn => {
+  btn.onclick = () => {
+   fontSize = Math.max(13, Math.min(32, fontSize + Number(btn.dataset.epubFont) * 2));
+   viewport.style.setProperty('--book-font-size', fontSize + 'px');
+   localStorage.setItem('balisco.epub.fontSize', String(fontSize));
+  };
+ });
+ const destroyThemeMenu = createPlayerThemeMenu(
+  controlsEl.querySelector('[data-epub-theme]'),
+  [['light', 'Claro', 'themeLight'], ['sepia', 'Sepia', 'theme'], ['dark', 'Oscuro', 'themeDark']],
+  theme, 'dark', value => {
+   theme = value;
+   viewport.dataset.bookTheme = theme;
+   localStorage.setItem('balisco.epub.theme', theme);
+  }
+ );
+
+ const onEpubKey = e => {
+  if (e.target instanceof Element && e.target.matches('input,textarea,select,[contenteditable]')) return;
+  if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+   e.preventDefault();
+   loadChapter(currentChapter + 1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+   e.preventDefault();
+   loadChapter(currentChapter - 1);
+  } else if (e.key === 'Home') {
+   e.preventDefault();
+   loadChapter(0);
+  } else if (e.key === 'End') {
+   e.preventDefault();
+   loadChapter(total - 1);
+  }
+ };
+ window.addEventListener('keydown', onEpubKey);
+
+ const instance = {
+  searchDocument,
+  paneIdx,
+  data,
+  driveId,
+  twoPageMode: twoCols,
+  toggleTwoPage: toggleColumns,
+  syncTwoPageButton: splitIsActive => {
+   if (splitIsActive) {
+    colsBtn.disabled = true;
+    colsBtn.title = 'Desactiva la pantalla dividida para ver 2 páginas';
+   } else {
+    colsBtn.disabled = false;
+    colsBtn.title = 'Ver a 2 páginas';
+   }
+  },
+  destroy() {
+   destroyThemeMenu();
+   window.removeEventListener('keydown', onEpubKey);
+   viewport.remove();
+   tocEl.replaceChildren();
+   controlsEl.remove();
+  }
+ };
+
+ loadChapter(currentChapter);
+ return instance;
+}
+
+function mountVideoPane(paneIdx, data, driveId, containerId, stageEl, tocEl, controlsEl, onStatus) {
+ const timeKey = `balisco.player.time.${driveId}`;
+ let savedTime = Number(localStorage.getItem(timeKey)) || 0;
+ let speed = Number(localStorage.getItem('balisco.player.speed')) || 1;
+ let bookmarks = loadItemAnnotations(driveId).filter(a => a.type === 'time');
+
+ controlsEl.innerHTML = `
+  <button type="button" class="player-btn icon-only" data-vid-bmk-add title="Guardar marcador en el segundo actual (B)">${icon('bookmark')}</button>
+  <button type="button" class="player-btn icon-only" data-vid-bmk-list title="Ver marcadores de tiempo">${icon('list')}</button>
+  <select class="player-select" data-vid-speed title="Velocidad de reproducción" aria-label="Velocidad">
+   ${[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(r => `<option value="${r}" ${r === speed ? 'selected' : ''}>${r}×</option>`).join('')}
+  </select>
+  <button type="button" class="player-btn icon-only" data-vid-pip title="Pantalla en pantalla (PiP)">${icon('pip')}</button>
+ `;
+
+ stageEl.innerHTML = `
+  <div class="player-video-stage" id="videoStage${paneIdx}">
+   <video id="baliscoVideo${paneIdx}" preload="metadata" playsinline src="${esc(data.stream_url)}"></video>
+   <div class="video-hud">
+    <div class="video-seek-wrap" id="videoSeekWrap${paneIdx}">
+     <div class="video-scrub-preview" id="videoScrubPreview${paneIdx}" hidden>
+      <canvas id="videoScrubCanvas${paneIdx}" width="168" height="94"></canvas>
+      <span class="video-scrub-time" id="videoScrubTime${paneIdx}">0:00</span>
+     </div>
+     <input type="range" class="video-seek" id="videoSeek${paneIdx}" min="0" max="1000" value="0" step="1" aria-label="Posición de reproducción">
+     <div class="video-bookmark-ticks" id="videoBookmarkTicks${paneIdx}"></div>
+    </div>
+    <div class="video-controls-row">
+     <div class="video-controls-left">
+      <button type="button" class="player-btn icon-only" id="videoPlayBtn${paneIdx}" title="Reproducir / Pausar (Espacio)">${icon('play')}</button>
+      <button type="button" class="player-btn icon-only" id="videoMuteBtn${paneIdx}" title="Silenciar (M)">${icon('volume')}</button>
+      <input type="range" class="video-volume-slider" id="videoVolume${paneIdx}" min="0" max="1" step="0.02" value="1" aria-label="Volumen">
+      <span class="video-time-label" id="videoTimeLabel${paneIdx}">0:00 / 0:00</span>
+     </div>
+     <div class="video-controls-right">
+      <button type="button" class="player-btn icon-only" id="videoFsBtn${paneIdx}" title="Pantalla completa (F)">${icon('fullscreen')}</button>
+     </div>
+    </div>
+   </div>
+  </div>
+ `;
+
+ const videoStage = $(`videoStage${paneIdx}`), video = $(`baliscoVideo${paneIdx}`);
+ const seek = $(`videoSeek${paneIdx}`), seekWrap = $(`videoSeekWrap${paneIdx}`);
+ const scrubPreview = $(`videoScrubPreview${paneIdx}`), scrubCanvas = $(`videoScrubCanvas${paneIdx}`);
+ const scrubTime = $(`videoScrubTime${paneIdx}`), ticksBox = $(`videoBookmarkTicks${paneIdx}`);
+ const playBtn = $(`videoPlayBtn${paneIdx}`), muteBtn = $(`videoMuteBtn${paneIdx}`);
+ const vol = $(`videoVolume${paneIdx}`), timeLabel = $(`videoTimeLabel${paneIdx}`);
+
+ const previewVideo = document.createElement('video');
+ previewVideo.preload = 'metadata';
+ previewVideo.muted = true;
+ previewVideo.playsInline = true;
+ previewVideo.src = data.stream_url;
+ let previewBusy = false, pendingPreviewTime = null;
+
+ previewVideo.addEventListener('seeked', () => {
+  previewBusy = false;
+  const ctx = scrubCanvas.getContext('2d');
+  if (ctx) try { ctx.drawImage(previewVideo, 0, 0, scrubCanvas.width, scrubCanvas.height); } catch {}
+  if (pendingPreviewTime !== null) {
+   const next = pendingPreviewTime;
+   pendingPreviewTime = null;
+   requestPreviewFrame(next);
+  }
+ });
+
+ function requestPreviewFrame(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return;
+  if (previewBusy) { pendingPreviewTime = sec; return; }
+  previewBusy = true;
+  try { previewVideo.currentTime = sec; } catch { previewBusy = false; }
+ }
+
+ seekWrap.addEventListener('pointermove', e => {
+  if (!video.duration) return;
+  const rect = seek.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+  const targetSec = ratio * video.duration;
+  scrubPreview.hidden = false;
+  scrubPreview.style.left = Math.max(88, Math.min(rect.width - 88, e.clientX - rect.left)) + 'px';
+  scrubTime.textContent = formatMediaTime(targetSec);
+  requestPreviewFrame(targetSec);
+ });
+ seekWrap.addEventListener('pointerleave', () => { scrubPreview.hidden = true; });
+
+ function renderVideoBookmarks() {
+  const bmkBtn = controlsEl.querySelector('[data-vid-bmk-list]');
+  if (bmkBtn) {
+   bmkBtn.title = `Ver marcadores de tiempo (${bookmarks.length})`;
+   bmkBtn.innerHTML = icon('list');
+  }
+  if (video.duration > 0) {
+   ticksBox.innerHTML = bookmarks.map(b => {
+    const pct = Math.max(0, Math.min(100, (b.time / video.duration) * 100));
+    return `<span class="video-bookmark-tick" style="left:${pct}%" data-bmk-jump="${b.time}" title="${esc(formatMediaTime(b.time) + ' · ' + (b.label || 'Marcador'))}"></span>`;
+   }).join('');
+  }
+  if (!tocEl.hidden) {
+   tocEl.innerHTML = `
+    <div class="player-toc-header"><span>Marcadores (${bookmarks.length})</span></div>
+    <div class="player-toc-list">
+     ${bookmarks.length ? bookmarks.map(b => `
+       <div class="player-annotation-card" data-bmk-jump="${b.time}">
+        <div class="player-annotation-head">
+         <span>⏱️ ${formatMediaTime(b.time)}</span>
+         <button type="button" class="player-btn icon-only" data-bmk-del="${esc(b.id)}" style="width:20px;height:20px">${icon('close')}</button>
+        </div>
+        <div class="player-annotation-text" style="--annot-color:var(--gold)">${esc(b.label || 'Momento marcado')}</div>
+       </div>
+     `).join('') : '<p style="font-size:11.5px;color:var(--muted);padding:12px">Pulsa “+ Marcador” o la tecla B para guardar momentos clave.</p>'}
+    </div>
+   `;
+  }
+ }
+
+ ticksBox.onclick = e => {
+  const tick = e.target.closest('[data-bmk-jump]');
+  if (tick) video.currentTime = Number(tick.dataset.bmkJump);
+ };
+
+ tocEl.onclick = e => {
+  const del = e.target.closest('[data-bmk-del]');
+  if (del) {
+   e.stopPropagation();
+   bookmarks = bookmarks.filter(b => b.id !== del.dataset.bmkDel);
+   saveItemAnnotations(driveId, bookmarks);
+   renderVideoBookmarks();
+   return;
+  }
+  const jump = e.target.closest('[data-bmk-jump]');
+  if (jump) video.currentTime = Number(jump.dataset.bmkJump);
+ };
+
+ controlsEl.querySelector('[data-vid-bmk-add]').onclick = () => {
+  const t = Math.floor(video.currentTime || 0);
+  const label = prompt(`Etiqueta para el marcador en ${formatMediaTime(t)}:`, `Momento ${formatMediaTime(t)}`);
+  if (label === null) return;
+  bookmarks.push({ id: String(Date.now()), type: 'time', time: t, label: label.trim() || `Momento ${formatMediaTime(t)}` });
+  bookmarks.sort((a, b) => a.time - b.time);
+  saveItemAnnotations(driveId, bookmarks);
+  renderVideoBookmarks();
+  notify(`Marcador añadido en ${formatMediaTime(t)}`);
+ };
+
+ controlsEl.querySelector('[data-vid-bmk-list]').onclick = () => {
+  tocEl.hidden = !tocEl.hidden;
+  controlsEl.querySelector('[data-vid-bmk-list]').classList.toggle('is-active', !tocEl.hidden);
+  renderVideoBookmarks();
+ };
+
+ let hudTimer = null;
+ const wakeHud = () => {
+  videoStage.classList.remove('is-idle');
+  clearTimeout(hudTimer);
+  if (!video.paused) hudTimer = setTimeout(() => videoStage.classList.add('is-idle'), 2600);
+ };
+ videoStage.addEventListener('pointermove', wakeHud);
+
+ video.addEventListener('loadedmetadata', () => {
+  video.playbackRate = speed;
+  if (savedTime > 2 && savedTime < video.duration - 5) video.currentTime = savedTime;
+  timeLabel.textContent = `${formatMediaTime(video.currentTime)} / ${formatMediaTime(video.duration)}`;
+  onStatus(formatMediaTime(video.currentTime));
+  renderVideoBookmarks();
+  video.play().catch(() => {});
+ });
+
+ video.addEventListener('play', () => { playBtn.innerHTML = icon('pause'); wakeHud(); });
+ video.addEventListener('pause', () => { playBtn.innerHTML = icon('play'); videoStage.classList.remove('is-idle'); clearTimeout(hudTimer); });
+ video.addEventListener('timeupdate', () => {
+  if (video.duration > 0) {
+   seek.value = String(Math.round((video.currentTime / video.duration) * 1000));
+   timeLabel.textContent = `${formatMediaTime(video.currentTime)} / ${formatMediaTime(video.duration)}`;
+   onStatus(formatMediaTime(video.currentTime));
+   localStorage.setItem(timeKey, String(Math.floor(video.currentTime)));
+  }
+ });
+
+ const togglePlay = () => { if (video.paused) video.play().catch(() => {}); else video.pause(); };
+ playBtn.onclick = togglePlay;
+ video.onclick = togglePlay;
+ video.ondblclick = () => {
+  $('baliscoPlayer').querySelector('[data-player-fullscreen]')?.click();
+ };
+ seek.oninput = () => { if (video.duration > 0) video.currentTime = (Number(seek.value) / 1000) * video.duration; };
+ muteBtn.onclick = () => { video.muted = !video.muted; muteBtn.innerHTML = icon(video.muted ? 'volumeMute' : 'volume'); };
+ vol.oninput = () => { video.volume = Number(vol.value); video.muted = video.volume === 0; muteBtn.innerHTML = icon(video.muted ? 'volumeMute' : 'volume'); };
+ $(`videoFsBtn${paneIdx}`).onclick = () => $('baliscoPlayer').querySelector('[data-player-fullscreen]')?.click();
+
+
+ controlsEl.querySelector('[data-vid-speed]').onchange = e => {
+  speed = Number(e.target.value) || 1;
+  video.playbackRate = speed;
+  localStorage.setItem('balisco.player.speed', String(speed));
+ };
+ controlsEl.querySelector('[data-vid-pip]').onclick = () => {
+  if (document.pictureInPictureElement) document.exitPictureInPicture?.().catch(() => {});
+  else video.requestPictureInPicture?.().catch(() => {});
+ };
+
+ const vidKey = e => {
+  if (e.target instanceof Element && e.target.matches('input,textarea,select')) return;
+  if (e.key === ' ' || e.key.toLowerCase() === 'k') { e.preventDefault(); togglePlay(); }
+  else if (e.key.toLowerCase() === 'b') { e.preventDefault(); controlsEl.querySelector('[data-vid-bmk-add]').click(); }
+  else if (e.key === 'ArrowLeft' && !e.altKey) { e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - 10); wakeHud(); }
+  else if (e.key === 'ArrowRight' && !e.altKey) { e.preventDefault(); video.currentTime = Math.min(video.duration || 0, video.currentTime + 10); wakeHud(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); video.volume = Math.min(1, video.volume + 0.08); vol.value = String(video.volume); wakeHud(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); video.volume = Math.max(0, video.volume - 0.08); vol.value = String(video.volume); wakeHud(); }
+  else if (e.key.toLowerCase() === 'm') { e.preventDefault(); muteBtn.click(); }
+ };
+ window.addEventListener('keydown', vidKey);
+
+ return {
+  paneIdx,
+  data,
+  driveId,
+  destroy() {
+   window.removeEventListener('keydown', vidKey);
+   clearTimeout(hudTimer);
+   video.pause(); video.removeAttribute('src'); video.load();
+   previewVideo.pause(); previewVideo.removeAttribute('src'); previewVideo.load();
+   stageEl.replaceChildren();
+   tocEl.replaceChildren();
+   controlsEl.remove();
+  }
+ };
+}
+
+function mountAudioPane(paneIdx, data, driveId, containerId, stageEl, tocEl, controlsEl, onStatus) {
+ const timeKey = `balisco.audio.time.${driveId}`;
+ let savedTime = Number(localStorage.getItem(timeKey)) || 0;
+ let speed = Number(localStorage.getItem('balisco.player.speed')) || 1;
+ let loop = false;
+ let bookmarks = loadItemAnnotations(driveId).filter(a => a.type === 'time');
+
+ controlsEl.innerHTML = `
+  <div class="player-pill-group">
+   <button type="button" class="player-btn" data-aud-skip="-10">−10s</button>
+   <button type="button" class="player-btn" data-aud-skip="10">+10s</button>
+  </div>
+  <button type="button" class="player-btn icon-only" data-aud-bmk-add title="Guardar marcador (B)">${icon('bookmark')}</button>
+  <button type="button" class="player-btn icon-only" data-aud-bmk-list title="Ver marcadores (${bookmarks.length})">${icon('list')}</button>
+  <select class="player-select" data-aud-speed title="Velocidad" aria-label="Velocidad">
+   ${[0.75, 1, 1.25, 1.5, 2].map(r => `<option value="${r}" ${r === speed ? 'selected' : ''}>${r}×</option>`).join('')}
+  </select>
+  <button type="button" class="player-btn icon-only" data-aud-loop title="Repetir">${icon('repeat')}</button>
+ `;
+
+ stageEl.innerHTML = `
+  <div class="player-audio-stage">
+   <div class="audio-card">
+    <div class="audio-artwork" id="audioArtwork${paneIdx}">${icon('audio')}</div>
+    <div class="audio-meta">
+     <h3 title="${esc(data.title)}">${esc(data.title)}</h3>
+     <p>${esc(data.author ? data.author.split(/\r?\n/).join(', ') : (data.ext || 'Audio').replace(/^\./, '').toUpperCase())}</p>
+    </div>
+    <canvas class="audio-visualizer" id="audioCanvas${paneIdx}" width="440" height="58"></canvas>
+    <audio id="baliscoAudio${paneIdx}" crossorigin="anonymous" preload="metadata" src="${esc(data.stream_url)}"></audio>
+    <div class="video-seek-wrap" id="audioSeekWrap${paneIdx}" style="width:100%">
+     <div class="video-scrub-preview" id="audioScrubPreview${paneIdx}" style="padding:3px 8px" hidden>
+      <span class="video-scrub-time" id="audioScrubTime${paneIdx}">0:00</span>
+     </div>
+     <input type="range" class="video-seek" id="audioSeek${paneIdx}" min="0" max="1000" value="0" step="1" aria-label="Posición">
+    </div>
+    <div class="video-controls-row" style="width:100%">
+     <div class="video-controls-left">
+      <button type="button" class="player-btn icon-only" id="audioPlayBtn${paneIdx}" title="Reproducir / Pausar (Espacio)">${icon('play')}</button>
+      <button type="button" class="player-btn icon-only" id="audioMuteBtn${paneIdx}" title="Silenciar">${icon('volume')}</button>
+      <input type="range" class="video-volume-slider" id="audioVolume${paneIdx}" min="0" max="1" step="0.02" value="1" aria-label="Volumen">
+     </div>
+     <span class="video-time-label" id="audioTimeLabel${paneIdx}">0:00 / 0:00</span>
+    </div>
+   </div>
+  </div>
+ `;
+
+ const coverPromise = containerId ? api('container_cover', { container: containerId, id: driveId }).catch(() => null) : loadCover(driveId).catch(() => null);
+ Promise.resolve(coverPromise).then(src => {
+  const box = $(`audioArtwork${paneIdx}`);
+  if (src && box && box.isConnected) box.innerHTML = `<img src="${src}" alt="">`;
+ });
+
+ const audio = $(`baliscoAudio${paneIdx}`), seek = $(`audioSeek${paneIdx}`);
+ const seekWrap = $(`audioSeekWrap${paneIdx}`), scrubPreview = $(`audioScrubPreview${paneIdx}`), scrubTime = $(`audioScrubTime${paneIdx}`);
+ const playBtn = $(`audioPlayBtn${paneIdx}`), muteBtn = $(`audioMuteBtn${paneIdx}`), vol = $(`audioVolume${paneIdx}`), timeLabel = $(`audioTimeLabel${paneIdx}`), canvas = $(`audioCanvas${paneIdx}`);
+ let animId = 0, audioCtx = null, analyser = null, dataArray = null;
+
+ seekWrap.addEventListener('pointermove', e => {
+  if (!audio.duration) return;
+  const rect = seek.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+  scrubPreview.hidden = false;
+  scrubPreview.style.left = Math.max(24, Math.min(rect.width - 24, e.clientX - rect.left)) + 'px';
+  scrubTime.textContent = formatMediaTime(ratio * audio.duration);
+ });
+ seekWrap.addEventListener('pointerleave', () => { scrubPreview.hidden = true; });
+
+ function renderAudioBookmarks() {
+  const btn = controlsEl.querySelector('[data-aud-bmk-list]');
+  if (btn) {
+   btn.title = `Ver marcadores (${bookmarks.length})`;
+   btn.innerHTML = icon('list');
+  }
+  if (!tocEl.hidden) {
+   tocEl.innerHTML = `
+    <div class="player-toc-header"><span>Marcadores (${bookmarks.length})</span></div>
+    <div class="player-toc-list">
+     ${bookmarks.length ? bookmarks.map(b => `
+       <div class="player-annotation-card" data-bmk-jump="${b.time}">
+        <div class="player-annotation-head">
+         <span>⏱️ ${formatMediaTime(b.time)}</span>
+         <button type="button" class="player-btn icon-only" data-bmk-del="${esc(b.id)}" style="width:20px;height:20px">${icon('close')}</button>
+        </div>
+        <div class="player-annotation-text" style="--annot-color:var(--gold)">${esc(b.label || 'Momento marcado')}</div>
+       </div>
+     `).join('') : '<p style="font-size:11.5px;color:var(--muted);padding:12px">Sin marcadores guardados.</p>'}
+    </div>
+   `;
+  }
+ }
+
+ tocEl.onclick = e => {
+  const del = e.target.closest('[data-bmk-del]');
+  if (del) {
+   e.stopPropagation();
+   bookmarks = bookmarks.filter(b => b.id !== del.dataset.bmkDel);
+   saveItemAnnotations(driveId, bookmarks);
+   renderAudioBookmarks();
+   return;
+  }
+  const jump = e.target.closest('[data-bmk-jump]');
+  if (jump) audio.currentTime = Number(jump.dataset.bmkJump);
+ };
+
+ controlsEl.querySelector('[data-aud-bmk-add]').onclick = () => {
+  const t = Math.floor(audio.currentTime || 0);
+  const label = prompt(`Etiqueta del marcador (${formatMediaTime(t)}):`, `Minuto ${formatMediaTime(t)}`);
+  if (label === null) return;
+  bookmarks.push({ id: String(Date.now()), type: 'time', time: t, label: label.trim() || `Minuto ${formatMediaTime(t)}` });
+  bookmarks.sort((a, b) => a.time - b.time);
+  saveItemAnnotations(driveId, bookmarks);
+  renderAudioBookmarks();
+  notify(`Marcador guardado en ${formatMediaTime(t)}`);
+ };
+
+ controlsEl.querySelector('[data-aud-bmk-list]').onclick = () => {
+  tocEl.hidden = !tocEl.hidden;
+  controlsEl.querySelector('[data-aud-bmk-list]').classList.toggle('is-active', !tocEl.hidden);
+  renderAudioBookmarks();
+ };
+
+ function startVisualizer() {
+  if (!canvas) return;
+  try {
+   if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaElementSource(audio);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 128;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+   }
+   if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch {}
+  const ctx = canvas.getContext('2d');
+  const drawBars = () => {
+   animId = requestAnimationFrame(drawBars);
+   ctx.clearRect(0, 0, canvas.width, canvas.height);
+   if (analyser && dataArray) analyser.getByteFrequencyData(dataArray);
+   const bars = 40, step = Math.floor((dataArray?.length || 40) / bars), barW = 7, gap = 4;
+   for (let i = 0; i < bars; i++) {
+    const val = dataArray ? dataArray[i * step] : 12;
+    const h = Math.max(4, Math.round((val / 255) * (canvas.height - 6)));
+    const x = i * (barW + gap) + 4, y = canvas.height - h;
+    ctx.fillStyle = val > 160 ? 'rgba(143,211,255,0.92)' : 'rgba(110,184,255,0.55)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, barW, h, 3);
+    ctx.fill();
+   }
+  };
+  cancelAnimationFrame(animId);
+  drawBars();
+ }
+
+ audio.addEventListener('loadedmetadata', () => {
+  audio.playbackRate = speed;
+  if (savedTime > 2 && savedTime < audio.duration - 3) audio.currentTime = savedTime;
+  timeLabel.textContent = `${formatMediaTime(audio.currentTime)} / ${formatMediaTime(audio.duration)}`;
+  onStatus(formatMediaTime(audio.currentTime));
+  audio.play().catch(() => {});
+ });
+ audio.addEventListener('play', () => { playBtn.innerHTML = icon('pause'); startVisualizer(); });
+ audio.addEventListener('pause', () => { playBtn.innerHTML = icon('play'); });
+ audio.addEventListener('timeupdate', () => {
+  if (audio.duration > 0) {
+   seek.value = String(Math.round((audio.currentTime / audio.duration) * 1000));
+   timeLabel.textContent = `${formatMediaTime(audio.currentTime)} / ${formatMediaTime(audio.duration)}`;
+   onStatus(formatMediaTime(audio.currentTime));
+   localStorage.setItem(timeKey, String(Math.floor(audio.currentTime)));
+  }
+ });
+
+ const togglePlay = () => { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); };
+ playBtn.onclick = togglePlay;
+ seek.oninput = () => { if (audio.duration > 0) audio.currentTime = (Number(seek.value) / 1000) * audio.duration; };
+ muteBtn.onclick = () => { audio.muted = !audio.muted; muteBtn.innerHTML = icon(audio.muted ? 'volumeMute' : 'volume'); };
+ vol.oninput = () => { audio.volume = Number(vol.value); audio.muted = audio.volume === 0; muteBtn.innerHTML = icon(audio.muted ? 'volumeMute' : 'volume'); };
+ controlsEl.querySelectorAll('[data-aud-skip]').forEach(btn => {
+  btn.onclick = () => { audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + Number(btn.dataset.audSkip))); };
+ });
+ controlsEl.querySelector('[data-aud-speed]').onchange = e => {
+  speed = Number(e.target.value) || 1;
+  audio.playbackRate = speed;
+  localStorage.setItem('balisco.player.speed', String(speed));
+ };
+ const loopBtn = controlsEl.querySelector('[data-aud-loop]');
+ loopBtn.onclick = () => { loop = !loop; audio.loop = loop; loopBtn.classList.toggle('is-active', loop); };
+
+ return {
+  paneIdx,
+  data,
+  driveId,
+  destroy() {
+   cancelAnimationFrame(animId);
+   audio.pause(); audio.removeAttribute('src'); audio.load();
+   audioCtx?.close?.().catch(() => {});
+   stageEl.replaceChildren();
+   tocEl.replaceChildren();
+   controlsEl.remove();
+  }
+ };
+}
+
+function mountImagePane(paneIdx, data, driveId, containerId, stageEl, controlsEl, onStatus) {
+ let scale = 1, panX = 0, panY = 0, rot = 0;
+ controlsEl.innerHTML = `
+  <div class="player-pill-group">
+   <button type="button" class="player-btn icon-only" data-img-zoom="-0.2" title="Alejar">−</button>
+   <button type="button" class="player-btn" data-img-reset title="Ajustar a la ventana">100%</button>
+   <button type="button" class="player-btn icon-only" data-img-zoom="0.2" title="Acercar">+</button>
+  </div>
+  <button type="button" class="player-btn icon-only" data-img-rotate title="Girar 90°">${icon('rotate')}</button>
+ `;
+
+ stageEl.innerHTML = `
+  <div class="player-image-stage" id="imgStage${paneIdx}">
+   <img id="baliscoImg${paneIdx}" src="${esc(data.image_url)}" alt="${esc(data.title)}">
+  </div>
+ `;
+
+ const imgStage = $(`imgStage${paneIdx}`), img = $(`baliscoImg${paneIdx}`);
+ const resetBtn = controlsEl.querySelector('[data-img-reset]');
+
+ const applyTransform = () => {
+  img.style.transform = `translate(${panX}px,${panY}px) scale(${scale}) rotate(${rot}deg)`;
+  resetBtn.textContent = `${Math.round(scale * 100)}%`;
+  onStatus(`${Math.round(scale * 100)}%`);
+ };
+
+ controlsEl.querySelectorAll('[data-img-zoom]').forEach(btn => {
+  btn.onclick = () => { scale = Math.max(0.15, Math.min(8, scale + Number(btn.dataset.imgZoom))); applyTransform(); };
+ });
+ resetBtn.onclick = () => { scale = 1; panX = 0; panY = 0; rot = 0; applyTransform(); };
+ controlsEl.querySelector('[data-img-rotate]').onclick = () => { rot = (rot + 90) % 360; applyTransform(); };
+
+ imgStage.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.14 : 0.88;
+  scale = Math.max(0.15, Math.min(8, scale * factor));
+  applyTransform();
+ }, { passive: false });
+
+ imgStage.ondblclick = () => {
+  if (scale > 1.05) { scale = 1; panX = 0; panY = 0; } else scale = 2.2;
+  applyTransform();
+ };
+
+ let drag = null;
+ imgStage.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  drag = { x: e.clientX, y: e.clientY, px: panX, py: panY, pid: e.pointerId };
+  imgStage.classList.add('is-dragging');
+  imgStage.setPointerCapture(e.pointerId);
+ });
+ imgStage.addEventListener('pointermove', e => {
+  if (!drag || drag.pid !== e.pointerId) return;
+  panX = drag.px + (e.clientX - drag.x);
+  panY = drag.py + (e.clientY - drag.y);
+  applyTransform();
+ });
+ const stopDrag = () => { drag = null; imgStage.classList.remove('is-dragging'); };
+ imgStage.addEventListener('pointerup', stopDrag);
+ imgStage.addEventListener('pointercancel', stopDrag);
+
+ return {
+  paneIdx,
+  data,
+  driveId,
+  destroy() {
+   stopDrag();
+   stageEl.replaceChildren();
+   controlsEl.remove();
+  }
+ };
+}
+
+function mountTextPane(paneIdx, data, driveId, containerId, stageEl, controlsEl, onStatus) {
+ let fontSize = Number(localStorage.getItem('balisco.text.fontSize')) || 14;
+ let theme = localStorage.getItem('balisco.epub.theme') || 'dark';
+ const lines = (data.content || '').split('\n').length;
+ onStatus(`${lines} líneas`);
+
+ controlsEl.innerHTML = `
+  <span class="player-page-indicator">${lines} líneas</span>
+  <div class="player-pill-group">
+   <button type="button" class="player-btn" data-txt-font="-1">A−</button>
+   <button type="button" class="player-btn" data-txt-font="1">A+</button>
+  </div>
+  <button type="button" class="player-btn icon-only player-filter-button" data-txt-theme title="Tema de lectura" aria-label="Tema de lectura" aria-haspopup="menu" aria-expanded="false">${icon('theme')}</button>
+ `;
+
+ const viewport = document.createElement('div');
+ viewport.className = 'player-book-viewport';
+ viewport.dataset.bookTheme = theme;
+ const pre = document.createElement('pre');
+ pre.className = 'player-text-pre';
+ pre.style.fontSize = fontSize + 'px';
+ pre.textContent = data.content || '';
+ viewport.append(pre);
+ stageEl.replaceChildren(viewport);
+ let searchOffset = 0;
+ let previousQuery = '';
+ const searchDocument = q => {
+  q = q.trim();
+  if (!q) return;
+  const content = pre.textContent || '';
+  if (q !== previousQuery) searchOffset = 0;
+  previousQuery = q;
+  const lower = content.toLocaleLowerCase();
+  const needle = q.toLocaleLowerCase();
+  let at = lower.indexOf(needle, searchOffset);
+  if (at < 0) at = lower.indexOf(needle);
+  if (at < 0) { notify('Sin coincidencias.'); return; }
+  searchOffset = at + needle.length;
+  const range = document.createRange();
+  range.setStart(pre.firstChild, at);
+  range.setEnd(pre.firstChild, at + q.length);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  viewport.scrollTop += range.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 80;
+ };
+
+ controlsEl.querySelectorAll('[data-txt-font]').forEach(btn => {
+  btn.onclick = () => {
+   fontSize = Math.max(11, Math.min(26, fontSize + Number(btn.dataset.txtFont)));
+   pre.style.fontSize = fontSize + 'px';
+   localStorage.setItem('balisco.text.fontSize', String(fontSize));
+  };
+ });
+ const destroyThemeMenu = createPlayerThemeMenu(
+  controlsEl.querySelector('[data-txt-theme]'),
+  [['light', 'Claro', 'themeLight'], ['sepia', 'Sepia', 'theme'], ['dark', 'Oscuro', 'themeDark']],
+  theme, 'dark', value => {
+   theme = value;
+   viewport.dataset.bookTheme = theme;
+   localStorage.setItem('balisco.epub.theme', theme);
+  }
+ );
+
+ return {
+  paneIdx,
+  data,
+  driveId,
+  searchDocument,
+  destroy() {
+   destroyThemeMenu();
+   viewport.remove();
+   controlsEl.remove();
+  }
+ };
+}
+
 async function deleteSelected(confirmed=false){const ids=S.bulkIds.size?[...S.bulkIds]:S.selected?[S.selected.drive_id]:[];if(!ids.length)return;if(S.confirmDelete&&!confirmed){const dialog=$('dialog');$('dialogTitle').textContent=ids.length===1?'Eliminar elemento':'Eliminar elementos';$('dialogBody').replaceChildren();const message=document.createElement('p');message.textContent=ids.length===1?'El elemento se moverá a la papelera de Drive. ¿Continuar?':`${ids.length} elementos se moverán a la papelera de Drive. ¿Continuar?`;const confirm=document.createElement('button');confirm.className='text-button danger-button';confirm.textContent='Mover a la papelera';confirm.onclick=guard(async()=>{dialog.close();await deleteSelected(true);});const cancel=document.createElement('button');cancel.className='text-button';cancel.textContent='Cancelar';cancel.onclick=()=>dialog.close();$('dialogBody').append(message,confirm,cancel);dialog.showModal();return;}for(const id of ids)await api('delete_item',{id});S.bulkIds.clear();S.selected=null;$('details').hidden=true;$('inspectorEmpty').hidden=false;await refresh();notify(ids.length===1?'Movido a la papelera de Drive':`${ids.length} elementos movidos a la papelera de Drive`);}
 let undoingDeletion=false;
 document.addEventListener('keydown',guard(async e=>{
@@ -1532,7 +4252,7 @@ document.addEventListener('keydown',guard(async e=>{
   notify(`Restaurado: ${result.name}`);
  }finally{undoingDeletion=false;}
 }));
-document.addEventListener('keydown',guard(async e=>{if(e.key!=='Delete'||S.view!=='grid'||e.target.closest('input,textarea,select,[contenteditable]')||$('dialog').open)return;e.preventDefault();await deleteSelected();}));
+document.addEventListener('keydown',guard(async e=>{if(!$('baliscoPlayer')?.hidden||e.key!=='Delete'||S.view!=='grid'||e.target.closest('input,textarea,select,[contenteditable]')||$('dialog').open)return;e.preventDefault();await deleteSelected();}));
 function applyTheme(){document.documentElement.dataset.theme=S.theme==='auto'?(matchMedia('(prefers-color-scheme:light)').matches?'light':'dark'):S.theme;}
 matchMedia('(prefers-color-scheme:light)').addEventListener('change',applyTheme);
 document.addEventListener('pointercancel',()=>{swiping=false;swipeTokens.clear();renderFilters();});
@@ -1571,7 +4291,7 @@ function cycleZoom(){changeZoom(1,true);}
 $('zoom').onclick=guard(cycleZoom);
 $('zoom').addEventListener('wheel',e=>{e.preventDefault();changeZoom(e.deltaY<0?1:-1);},{passive:false});
 document.addEventListener('wheel',e=>{
- if(!e.ctrlKey||e.target.closest('#zoom'))return;
+ if(!$('baliscoPlayer')?.hidden||!e.ctrlKey||e.target.closest('#zoom'))return;
  e.preventDefault();
  changeZoom(e.deltaY<0?1:-1);
 },{passive:false});
@@ -1705,7 +4425,7 @@ async function requestImportCancel(id){const job=importJobs.get(id);if(!job||job
 async function pollImport(id){while(importJobs.get(id)?.state==='running'){try{const state=await api('import_status',{id});importJobs.set(id,{...importJobs.get(id),...state});renderImportPanel();if(['done','cancelled','error','unknown'].includes(state.state)){await window.balisco.importFinished({ok:state.state==='done',cancelled:state.state==='cancelled',id,data:state.data,error:state.error||state.message});return;}}catch(error){await window.balisco.importFinished({ok:false,id,error:error.message});return;}await new Promise(resolve=>setTimeout(resolve,700));}}
 $('imports').onclick=()=>{const panel=$('importPanel');panel.hidden=!panel.hidden;setImportNotice('');if(!panel.hidden){$('popover').hidden=true;popoverAnchor=null;panel.style.right=Math.max(12,innerWidth-$('imports').getBoundingClientRect().right)+'px';renderImportPanel();}};
 $('importPanel').onclick=async event=>{const tab=event.target.closest('[data-import-tab]');if(tab){importTab=tab.dataset.importTab;renderImportPanel();return;}const cancel=event.target.closest('[data-cancel]');if(cancel){requestImportCancel(cancel.dataset.cancel);return;}const remove=event.target.closest('[data-delete]');if(remove){const job=importJobs.get(remove.dataset.delete);remove.disabled=true;try{await api('delete_import',{id:job.id});job.state='deleted';job.message='Eliminado de Drive';renderImportPanel();notify(`Eliminado de Drive: ${job.name}`,'success');}catch(error){remove.disabled=false;notify(error.message,'error');}}};
-window.balisco={flush,windowState,close:guard(async()=>{await flush();await api('close');}),state:S,nativeDrop:true,importStarted:startImportUi,importRejected:message=>{setImportNotice('error');notify(`Error al subir: ${message}`,'error');},importFinished:async result=>{const job=importJobs.get(result.id);if(!job||job.finished)return;job.finished=true;job.state=result.cancelled?'cancelled':result.ok?'done':'error';job.message=result.cancelled?`Cancelado: ${job.name}`:result.ok?`Copiado a Drive: ${job.name}`:result.error||`Error al subir: ${job.name}`;const jobs=[...importJobs.values()];setImportNotice(jobs.some(item=>item.state==='error')?'error':jobs.some(item.state==='running')?'running':'done');renderImportPanel();if(!result?.ok){notify(result?.cancelled?`Cancelado: ${job.name}`:`Error al subir ${job.name}: ${job.message}`,'error');return;}notify(`Copiado a Drive: ${job.name}`,'success');try{await api('sync');await refresh();}catch(error){notify(`Copia terminada. Sincroniza cuando Drive termine de registrar el archivo: ${error.message}`,'error');}}};
+window.balisco={flush,windowState,close:guard(async()=>{await flush();await api('close');}),state:S,nativeDrop:true,importStarted:startImportUi,importRejected:message=>{setImportNotice('error');notify(`Error al subir: ${message}`,'error');},importFinished:async result=>{const job=importJobs.get(result.id);if(!job||job.finished)return;job.finished=true;job.state=result.cancelled?'cancelled':result.ok?'done':'error';job.message=result.cancelled?`Cancelado: ${job.name}`:result.ok?`Copiado a Drive: ${job.name}`:result.error||`Error al subir: ${job.name}`;const jobs=[...importJobs.values()];setImportNotice(jobs.some(item=>item.state==='error')?'error':jobs.some(item.state==='running')?'running':'done');renderImportPanel();if(!result?.ok){notify(result?.cancelled?`Cancelado: ${job.name}`:`Error al subir ${job.name}: ${job.message}`,'error');return;}notify(`Copiado a Drive: ${job.name}`,'success');try{const before=new Set((await api('query',{tokens:[]})).items.map(item=>item.drive_id));await api('sync');const after=await api('query',{tokens:[]});if(result.data?.id)recentImportIds.add(result.data.id);for(const item of after.items)if(!before.has(item.drive_id))recentImportIds.add(item.drive_id);await refresh(true);}catch(error){notify(`Copia terminada. Sincroniza cuando Drive termine de registrar el archivo: ${error.message}`,'error');}}};
 async function loadActiveProfile(){
  S.loading=true;scheduleDraw();
  try{
@@ -1742,7 +4462,7 @@ async function selectDriveProfile(id){
  S.covers.clear();coverCache.clear();S.courseCovers.clear();
  S.selected=null;S.bulkIds.clear();S.similarIds=null;S.tokens=[];S.libraryTokens=[];
  S.course=null;S.resources=[];S.coursePath=[];S.courseSelection=null;S.courseSelectedKeys.clear();
- importJobs.clear();setImportNotice('');$('importPanel').hidden=true;
+ importJobs.clear();recentImportIds.clear();setImportNotice('');$('importPanel').hidden=true;
  $('popover').hidden=true;popoverAnchor=null;hideTagSuggestions();
  $('details').hidden=true;$('courseInspector').hidden=true;$('inspectorEmpty').hidden=false;
  $('similar').hidden=true;$('similar').setAttribute('aria-pressed','false');
@@ -1787,6 +4507,27 @@ async function showDriveSetup(state){
  }
  return false;
 }
+document.addEventListener('keydown',guard(async e=>{
+ if(e.key!=='F2'||e.ctrlKey||e.metaKey||e.altKey||document.querySelector('dialog[open]'))return;
+ const focused=e.target instanceof Element?e.target:null;
+ if(!$('baliscoPlayer').hidden){e.preventDefault();e.stopImmediatePropagation();const input=$('playerMainTitleInput');if(input&&!input.hidden){input.focus();input.select();}else $('playerMainTitle')?.click();return;}
+ if(S.view==='grid'){
+  const card=focused?.closest('.card'),cardId=card?S.items[Number(card.dataset.index)]?.drive_id:null,id=cardId||S.selected?.drive_id;
+  if(!id)return;e.preventDefault();e.stopImmediatePropagation();
+  if(S.bulkIds.size>1&&(!cardId||S.bulkIds.has(cardId))){await openBulkTitleEdit([...S.bulkIds]);return;}
+  if(S.rows.has(id)){await startCardTitleEdit(id);return;}
+  if(S.selected?.drive_id===id){setInspectorCompact(false);const input=$('title');input.focus();input.select();}return;
+ }
+ if(S.view==='course'){
+  const row=focused?.closest('[data-resource-key]');if(!row&&!S.courseSelection)return;e.preventDefault();e.stopImmediatePropagation();
+  if(S.courseSelectedKeys.size>1){if(S.bulkIds.size===S.courseSelectedKeys.size)await openBulkTitleEdit([...S.bulkIds]);else notify(currentLang==='en'?'Some selected resources are not indexed yet.':'Algunos recursos seleccionados aún no están indexados.','error');return;}
+  if(row&&S.courseSelection?.key!==row.dataset.resourceKey)await selectCourseResource(row);
+  const input=$('details').hidden?$('courseInspector').querySelector('.course-title-input'):$('title');if(input){setInspectorCompact(false);input.focus();input.select();}
+ }
+}),true);
+const languageObserver=new MutationObserver(changes=>{for(const change of changes){if(change.type==='characterData')translateUiNode(change.target);else if(change.type==='attributes')translateUiNodeAttributes(change.target);else for(const node of change.addedNodes)translateUiNode(node);}});
+applyLanguage();
+languageObserver.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['title','aria-label','placeholder']});
 async function boot(){if(ready||typeof window.pywebview?.api?.call!=='function')return;ready=true;try{windowState((await api('window_state'))?.maximized);await loadActiveProfile();requestAnimationFrame(()=>requestAnimationFrame(()=>guard(()=>api('ready',{firstPaint:performance.now(),visibleCards:S.rows.size}))()));}catch(e){notify(e.message);$('summary').textContent='No se pudo conectar con la biblioteca';}}
 window.addEventListener('pywebviewready',boot);
 boot();

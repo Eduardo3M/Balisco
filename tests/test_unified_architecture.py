@@ -1,4 +1,5 @@
 from pathlib import Path
+from contextlib import closing
 from unittest.mock import patch
 import sqlite3
 import tempfile
@@ -265,8 +266,7 @@ class UnifiedArchitectureTests(unittest.TestCase):
         from core.thumbnailer import thumbnail_name
         base=self.mount/'local_balisco'
         base.mkdir()
-        with sqlite3.connect(base/'biblioteca.db') as legacy:
-            legacy.close()
+        sqlite3.connect(base/'biblioteca.db').close()
         legacy_db=conectar(base/'biblioteca.db')
         with legacy_db:
             configurar(legacy_db,'id_perfil_drive','account_A')
@@ -294,7 +294,7 @@ class UnifiedArchitectureTests(unittest.TestCase):
         # New third account starts completely empty in its own directory
         storage.activate('account_C')
         self.assertEqual(storage.active,'account_C')
-        with conectar(storage.database('account_C')) as db_c:
+        with closing(conectar(storage.database('account_C'))) as db_c:
             self.assertEqual(db_c.execute('SELECT count(*) FROM items').fetchone()[0],0)
             self.assertEqual(preferencia(db_c,'id_perfil_drive'),'account_C')
 
