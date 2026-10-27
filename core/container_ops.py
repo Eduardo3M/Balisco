@@ -11,6 +11,8 @@ from .database import preferencia
 from .drive_sync import Metadata, conectar_db_drive_ro, detectar_perfiles_drive, extraer_ids_proto, obtener_letra_drive, classify_file
 from .items_manager import ItemsManager
 from .cleaner import clean_book_title_and_author
+from .library_layout import root_id, relative_path, INBOX, category_name, cleanup_category
+from .tags_manager import normalizar
 
 
 class ImportCancelled(Exception):
@@ -104,6 +106,9 @@ def _verify_copy(source,target,manifest,directories=(),cancelled=None):
 
 
 def library_root(db, profile):
+    if root_id(db,profile):
+        from .library_layout import library_root as linked_root
+        return linked_root(db,profile)
     root=Path(preferencia(db,'unidad_drive:'+profile) or obtener_letra_drive()).resolve()
     for name in ('Mi unidad','My Drive'):
         candidate=root/name/'Biblioteca'
@@ -120,14 +125,14 @@ def inside(path, root):
 
 def valid_name(value):
     name=str(value or '').strip()
-    if not name or name in ('.','..') or re.search(r'[<>:"/\\|?*\x00-\x1f]',name) or name.endswith((' ','.')):
+    if not name or name.startswith('.') or name in ('.','..') or re.search(r'[<>:"/\\|?*\x00-\x1f]',name) or name.endswith((' ','.')):
         raise ValueError('Nombre de contenedor inválido')
     if name.casefold() in {'con','prn','aux','nul',*(f'com{i}' for i in range(1,10)),*(f'lpt{i}' for i in range(1,10))}:
         raise ValueError('Nombre reservado por Windows')
     return name
 
 
-def drive_id_for_path(profile, relative, timeout=60, progress=None, is_folder=None, cancelled=None):
+def drive_id_for_path(profile, relative, timeout=60, progress=None, is_folder=None, cancelled=None, allow_hidden=False):
     source=next((p['ruta_db'] for p in detectar_perfiles_drive() if p['id']==profile),None)
     if not source: raise FileNotFoundError('Metadatos de Drive no disponibles')
     expected=tuple(PureWindowsPath(relative).parts)
@@ -138,7 +143,8 @@ def drive_id_for_path(profile, relative, timeout=60, progress=None, is_folder=No
         with closing(conectar_db_drive_ro(source)) as conn:
             meta=Metadata(conn)
             for stable,node in meta.nodes.items():
-                if (is_folder is None or bool(node['is_folder']) is is_folder) and meta.parts(stable)==expected:
+                parts=meta.raw_parts(stable) if allow_hidden else meta.parts(stable)
+                if (is_folder is None or bool(node['is_folder']) is is_folder) and parts==expected:
                     if progress:progress('registrando')
                     return extraer_ids_proto(node['proto'])[0]
         if not announced and progress:progress('esperando_drive')
@@ -194,7 +200,10 @@ def assign_items(db, profile, ids, container_id=None, name=None):
     if any(item['perfil_drive']!=profile or not item['disponible'] or item['tipo']=='curso' for item in items):
         raise ValueError('Selecciona archivos visibles del perfil activo')
     library=library_root(db,profile)
-    containers=library/'Containers'; containers.mkdir(exist_ok=True)
+    linked=bool(root_id(db,profile))
+    common=normalizar(items[0]['etiquetas']) if items else []
+    category=category_name(common[0]) if linked and common and all(normalizar(item['etiquetas'])[:1]==common[:1] for item in items) else INBOX if linked else 'Containers'
+    containers=library/category; containers.mkdir(exist_ok=True)
     created=False
     if container_id:
         container=manager.obtener(container_id)
@@ -220,17 +229,19 @@ def assign_items(db, profile, ids, container_id=None, name=None):
         moves.append((item,source,target))
     if not container_id:
         if created: folder.mkdir()
-        relative=str(PureWindowsPath(library.parent.name,'Biblioteca','Containers',folder.name))
+        relative=relative_path(db,profile,folder,library) if linked else str(PureWindowsPath(library.parent.name,'Biblioteca','Containers',folder.name))
         container_id=drive_id_for_path(profile,relative)
         with db:
             db.execute('''INSERT INTO items(drive_id,titulo,tipo,tipo_contenido,categoria_macro,ruta_relativa,perfil_drive)
-                VALUES(?,?,'curso','contenedor','Containers',?,?) ON CONFLICT(drive_id) DO UPDATE SET disponible=1,
+                VALUES(?,?,'curso','contenedor',?, ?,?) ON CONFLICT(drive_id) DO UPDATE SET disponible=1,
                 titulo=excluded.titulo,ruta_relativa=excluded.ruta_relativa,
                 tipo_contenido='contenedor',formato=''
-                ''',(container_id,folder.name,relative,profile))
+                ''',(container_id,folder.name,category,relative,profile))
+            if linked and category!=INBOX:
+                db.execute('UPDATE items SET etiquetas=? WHERE drive_id=?',('+'+category,container_id))
     for item,source,target in moves:
         shutil.move(str(source),str(target))
-        relative=str(PureWindowsPath(library.parent.name,'Biblioteca',*target.relative_to(library).parts))
+        relative=relative_path(db,profile,target,library) if linked else str(PureWindowsPath(library.parent.name,'Biblioteca',*target.relative_to(library).parts))
         with db:
             db.execute('''INSERT INTO container_entries(container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive)
                 VALUES(?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
@@ -245,7 +256,89 @@ def assign_items(db, profile, ids, container_id=None, name=None):
                 expected_relative=excluded.expected_relative,container_drive_id=excluded.container_drive_id,
                 perfil_drive=excluded.perfil_drive,created_at=CURRENT_TIMESTAMP''',
                 (item['drive_id'],relative,container_id,profile))
+        if linked:cleanup_category(source.parent)
     return {'container_id':container_id,'moved':len(moves)}
+
+
+def extract_to_library(db, profile, container, sources, remove_container=False):
+    """Extract files or folders while preserving each Drive ID and nested metadata."""
+    if not root_id(db,profile):raise ValueError('La extracción unificada requiere una biblioteca vinculada')
+    library=library_root(db,profile)
+    manager=ItemsManager(db)
+    container_path=inside(manager.ruta_local(container),library)
+    if container_path.parent.parent!=library:raise ValueError('El contenedor no está en una categoría')
+    container_tags=normalizar(container['etiquetas'])
+    plans=[];targets=set()
+    for raw in sources:
+        source=inside(Path(raw),container_path)
+        if not source.exists() or source.is_symlink():raise FileNotFoundError(str(source))
+        old=relative_path(db,profile,source,library)
+        root_row=db.execute('SELECT * FROM items WHERE perfil_drive=? AND ruta_relativa=?',(profile,old)).fetchone()
+        if not root_row:raise ValueError('Sin ID de Drive para el recurso extraído')
+        root_item=dict(root_row)
+        own=normalizar(root_item['etiquetas'])
+        inherited=list(dict.fromkeys([*container_tags,*own]))
+        category=container_path.parent.name
+        if category.casefold()==INBOX.casefold() and inherited:
+            category=category_name(inherited[0])
+        elif category.casefold()!=INBOX.casefold():
+            inherited=[category.casefold(),*[tag for tag in inherited if tag!=category.casefold()]]
+        target=library/category/source.name
+        key=str(target).casefold()
+        if target.exists() or key in targets:raise FileExistsError('Ya existe un elemento en '+str(target))
+        targets.add(key)
+        prefix=old+'\\'
+        affected=[dict(row) for row in db.execute('SELECT * FROM items WHERE perfil_drive=? AND (ruta_relativa=? OR substr(ruta_relativa,1,?)=?)',
+                                                 (profile,old,len(prefix),prefix))]
+        entries=[dict(row) for row in db.execute('SELECT * FROM container_entries WHERE perfil_drive=? AND (ruta_relativa=? OR substr(ruta_relativa,1,?)=?)',
+                                                (profile,old,len(prefix),prefix))]
+        new=relative_path(db,profile,target,library)
+        plans.append((source,target,old,new,root_item,affected,entries,inherited,category))
+    moved=[]
+    try:
+        for source,target,*_ in plans:
+            target.parent.mkdir(exist_ok=True)
+            shutil.move(str(source),str(target));moved.append((source,target))
+        if remove_container:
+            for child in container_path.iterdir():
+                if child.is_file() and child.name.casefold()=='desktop.ini':child.unlink()
+            container_path.rmdir()
+        with db:
+            for source,target,old,new,root_item,affected,entries,tags,category in plans:
+                prefix=old+'\\'
+                folder_id=root_item['drive_id'] if source.is_dir() or target.is_dir() else ''
+                for item in affected:
+                    suffix=item['ruta_relativa'][len(old):]
+                    path=new+suffix
+                    parent='' if item['drive_id']==root_item['drive_id'] else folder_id
+                    labels=' '.join('+'+tag for tag in tags) if not parent else item['etiquetas']
+                    db.execute('''UPDATE items SET ruta_relativa=?,categoria_macro=?,subcategoria='',container_parent=?,
+                        etiquetas=?,disponible=1 WHERE id=?''',(path,category,parent,labels,item['id']))
+                    db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
+                        VALUES(?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET expected_relative=excluded.expected_relative,
+                        container_drive_id=excluded.container_drive_id,perfil_drive=excluded.perfil_drive,created_at=CURRENT_TIMESTAMP''',
+                        (item['drive_id'],path,parent,profile))
+                for entry in entries:
+                    if not folder_id:
+                        db.execute('DELETE FROM container_entries WHERE id=?',(entry['id'],))
+                    else:
+                        path=new+entry['ruta_relativa'][len(old):]
+                        db.execute('UPDATE container_entries SET container_drive_id=?,ruta_relativa=? WHERE id=?',
+                                   (folder_id,path,entry['id']))
+            if remove_container:
+                db.execute('UPDATE items SET disponible=0 WHERE drive_id=?',(container['drive_id'],))
+                db.execute('DELETE FROM container_entries WHERE container_drive_id=?',(container['drive_id'],))
+                db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
+                    VALUES(?,'','__removed__',?) ON CONFLICT(drive_id) DO UPDATE SET expected_relative='',
+                    container_drive_id='__removed__',created_at=CURRENT_TIMESTAMP''',(container['drive_id'],profile))
+        try:cleanup_category(container_path.parent)
+        except OSError:logging.getLogger(__name__).exception('No se pudo limpiar la categoría vacía')
+        return {'released':len(plans),'paths':[str(target) for _,target,*_ in plans]}
+    except Exception:
+        if remove_container and not container_path.exists():container_path.mkdir()
+        for source,target in reversed(moved):
+            if target.exists() and not source.exists():shutil.move(str(target),str(source))
+        raise
 
 
 def ungroup_container(db, profile, container_id):
@@ -253,18 +346,23 @@ def ungroup_container(db, profile, container_id):
     if container['tipo']!='curso' or container['perfil_drive']!=profile or not container['disponible']:
         raise ValueError('Contenedor inválido')
     library=library_root(db,profile)
+    linked=bool(root_id(db,profile))
     folder=inside(manager.ruta_local(container),library)
-    if folder.parent.resolve()!=(library/'Containers').resolve():
+    if linked:
+        if folder.parent.parent!=library:raise ValueError('Solo se pueden deshacer contenedores del nivel de categoría')
+    elif folder.parent.resolve()!=(library/'Containers').resolve():
         raise ValueError('Solo se pueden deshacer contenedores de Biblioteca/Containers')
     children=list(folder.iterdir())
+    if linked:
+        return extract_to_library(db,profile,container,children,remove_container=True)
     for source in children:
         inside(source,library)
-        if (library/source.name).exists(): raise FileExistsError('Ya existe en Biblioteca: '+source.name)
+        if (folder.parent/source.name).exists(): raise FileExistsError('Ya existe en la categoría: '+source.name)
     entries=[dict(r) for r in db.execute('SELECT * FROM container_entries WHERE container_drive_id=?',(container_id,))]
-    storage=library/'Storage'
+    storage=folder.parent if linked else library/'Storage'
     for source in children:
-        destination=library/source.name
-        if classify_file(source.name,allow_other=True)=='archivo':
+        destination=folder.parent/source.name if linked else library/source.name
+        if not linked and classify_file(source.name,allow_other=True)=='archivo':
             storage.mkdir(exist_ok=True);destination=storage/source.name
         shutil.move(str(source),str(destination))
     folder.rmdir()
@@ -285,8 +383,8 @@ def ungroup_container(db, profile, container_id):
             tipo=classify_file(entry['titulo'],allow_other=True)
             if not tipo: continue
             title,author=clean_book_title_and_author(entry['titulo'],tipo) if tipo=='pdf' else (Path(entry['titulo']).stem,'')
-            target_parts=('Storage',entry['titulo']) if tipo=='archivo' else (entry['titulo'],)
-            relative=str(PureWindowsPath(library.parent.name,'Biblioteca',*target_parts))
+            target_parts=(folder.parent.name,entry['titulo']) if linked else ('Storage',entry['titulo']) if tipo=='archivo' else (entry['titulo'],)
+            relative=relative_path(db,profile,library.joinpath(*target_parts),library) if linked else str(PureWindowsPath(library.parent.name,'Biblioteca',*target_parts))
             db.execute('''INSERT INTO items(drive_id,titulo,autor,tipo,tipo_contenido,formato,ruta_relativa,perfil_drive,tamano_bytes,mime_type)
                 VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET
                 ruta_relativa=excluded.ruta_relativa,tipo=excluded.tipo,tipo_contenido=excluded.tipo_contenido,
@@ -300,11 +398,12 @@ def ungroup_container(db, profile, container_id):
     return {'released':len(children)}
 
 
-def import_container_folder(db, profile, source_path, progress=None, cancelled=None, on_target=None):
+def import_container_folder(db, profile, source_path, progress=None, cancelled=None, on_target=None, active_tag=None):
     source=Path(source_path).resolve()
     if not source.is_dir() or source.is_symlink(): raise ValueError('Selecciona una carpeta válida')
     library=library_root(db,profile)
-    containers=library/'Containers'; containers.mkdir(exist_ok=True)
+    linked=bool(root_id(db,profile));category=category_name(active_tag) if linked and active_tag else INBOX if linked else 'Containers'
+    containers=library/category; containers.mkdir(exist_ok=True)
     target=containers/valid_name(source.name)
     if target.exists() or target.resolve().is_relative_to(source):
         raise FileExistsError('El contenedor ya existe o la carpeta está dentro de sí misma')
@@ -312,25 +411,26 @@ def import_container_folder(db, profile, source_path, progress=None, cancelled=N
     target.mkdir()
     if on_target:on_target(str(target),'folder')
     stats={'files_done':0,'files_total':len(manifest),'bytes_current':0,'bytes_total':sum(size for _,size in manifest)}
-    label=f'Copiando “{source.name}” a Biblioteca/Containers'
+    label=f'Copiando “{source.name}” a {category}'
     if progress:progress('copiando',f'{label} · aprox. 10%')
     _copy_tree(source,target,cancelled,progress,stats,label,create_root=False)
     _verify_copy(source,target,manifest,directories,cancelled)
     _check_cancelled(cancelled)
     return {'title':target.name,'kind':'folder','file_count':len(manifest),'folder_count':len(directories),'total_bytes':sum(size for _,size in manifest)}
 
-def import_library_file(db, profile, source_path, progress=None, cancelled=None, on_target=None, thumbnail_dir=None):
+def import_library_file(db, profile, source_path, progress=None, cancelled=None, on_target=None, thumbnail_dir=None, active_tag=None):
     source=Path(source_path).resolve()
     if not source.is_file() or source.is_symlink():raise ValueError('Selecciona un archivo válido')
     library=library_root(db,profile)
-    storage=library/'Storage';storage.mkdir(exist_ok=True)
+    linked=bool(root_id(db,profile));category=category_name(active_tag) if linked and active_tag else INBOX if linked else 'Storage'
+    storage=library/category;storage.mkdir(exist_ok=True)
     filename=valid_name(source.name)
     target=storage/filename
     if target.exists():raise FileExistsError('Ya existe un archivo con ese nombre en Storage')
     with target.open('xb'):pass
     if on_target:on_target(str(target),'file')
     stats={'files_done':0,'files_total':1,'bytes_current':0,'bytes_total':source.stat().st_size}
-    label=f'Copiando “{filename}” a Biblioteca/Storage'
+    label=f'Copiando “{filename}” a {category}'
     if progress:progress('copiando',f'{label} · aprox. 10%')
     _copy_file(source,target,cancelled,progress,stats,label)
     _check_cancelled(cancelled)
@@ -340,7 +440,7 @@ def import_library_file(db, profile, source_path, progress=None, cancelled=None,
     if thumbnail_dir:
         try:
             from .thumbnailer import create_thumbnail, thumbnail_name
-            relative=str(PureWindowsPath(library.parent.name,'Biblioteca','Storage',target.name))
+            relative=relative_path(db,profile,target,library) if linked else str(PureWindowsPath(library.parent.name,'Biblioteca','Storage',target.name))
             create_thumbnail(target,Path(thumbnail_dir)/thumbnail_name(profile,relative))
         except Exception:
             logging.getLogger(__name__).exception('No se pudo generar la miniatura para %s',filename)

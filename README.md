@@ -1,30 +1,45 @@
-# Balisco
+<p align="center">
+  <img src="ui/banner.png" alt="Balisco" width="100%" />
+</p>
 
-Balisco es una biblioteca de escritorio para explorar y organizar archivos de Google Drive sin descargar todos los PDF. Lee los metadatos de Google Drive para escritorio y guarda tus notas y preferencias en el equipo.
+<h1 align="center">Balisco</h1>
 
-## Qué permite hacer
+<p align="center">
+  <strong>Tu biblioteca visual sobre Google Drive, sin ocupar espacio en tu PC.</strong>
+</p>
 
-- Explorar libros, documentos y contenedores con portadas y un panel de detalles.
-- Buscar por texto, etiquetas, autor, tipo, estado y calificación. `@con:seguimiento` muestra los elementos con favoritos, calificación, estado avanzado o notas.
-- Añadir notas, etiquetas, favoritos y calificaciones; editar varios elementos a la vez.
-- Abrir archivos en Drive o en el Explorador de Windows.
-- Recuperar la ficha de un PDF resubido con otro ID cuando hay una única coincidencia segura en la misma ruta y perfil.
-- Crear una copia de seguridad de la biblioteca local y las portadas en Drive.
+---
 
-## Instalar en Windows x64
+**Balisco** es una aplicación de escritorio para Windows que convierte una carpeta de **Google Drive para escritorio** en una biblioteca visual para tus libros, documentos, cursos y colecciones, sin necesidad de descargar todos los archivos a tu disco duro.
 
-Ejecuta `BaliscoSetup-0.1.9-win-x64.exe`. El instalador incluye Python e instala Balisco para el usuario actual. Requiere Google Drive para escritorio y Microsoft Edge WebView2 Runtime.
+## ✨ Qué puedes hacer
 
-Los datos personales se guardan fuera de la instalación, en `%LOCALAPPDATA%\Balisco`: `biblioteca.db`, portadas y preferencias. Los PDF permanecen en Google Drive. Actualizar o desinstalar la aplicación no elimina esa carpeta.
+- **Explorar sin descargar:** Visualiza tu catálogo con portadas, autor, formato y progreso leyendo directamente los metadatos de Google Drive.
+- **Organización automática por etiquetas:** La primera etiqueta de cada elemento define su carpeta en Drive (y `_Inbox` guarda lo que aún no clasificas). Las demás etiquetas sirven para filtrarlo desde varios temas.
+- **Contenedores y cursos:** Agrupa carpetas con múltiples archivos o subcarpetas y haz seguimiento individual de tus recursos favoritos, calificados o en progreso.
+- **Búsqueda rápida y filtros:** Filtra al instante por texto, etiquetas (`+tema`), autor (`@autor`), favoritos (`@favoritos`), estado de lectura o calificación.
+- **Portadas locales o con Google Colab:** Genera portadas directamente en tu equipo o en lote desde Google Colab para no descargar archivos pesados.
+- **Multicuenta y respaldos:** Cada cuenta de Google Drive mantiene su propio perfil local aislado (`%LOCALAPPDATA%\Balisco\perfiles\<id>\`) y puedes guardar copias de seguridad en tu Drive con un clic.
 
-## Desarrollo
+## 🚀 Instalación (Windows x64)
 
-Requiere Windows x64 y Python 3.12 o posterior.
+1. Instala y mantén abierto **Google Drive para escritorio**.
+2. Descarga e instala **`BaliscoSetup-0.1.9-win-x64.exe`** desde la sección de [**Releases**](https://github.com/Eduardo3M/Balisco/releases/latest).
+3. Al abrir Balisco, elige o crea la carpeta de tu biblioteca dentro de `Mi unidad`.
+
+> Tus notas, etiquetas, portadas y preferencias se guardan fuera de la instalación en `%LOCALAPPDATA%\Balisco`, por lo que actualizar o desinstalar la app nunca borra tus datos ni tus archivos de Drive.
+
+## 🛠️ Desarrollo y compilación
+
+Requiere **Windows x64** y **Python 3.12+**.
 
 ```powershell
+# Instalar dependencias
 python -m pip install -e ".[build]"
-python Balisco.pyw
-python -m unittest discover -s tests -v
-```
 
-Para crear el instalador, instala Inno Setup 6 y ejecuta `python scripts/build_installer.py`. El resultado se genera en `dist/`; para distribuirlo en GitHub, adjunta ese `.exe` a una Release.
+# Ejecutar desde código fuente
+python Balisco.pyw
+
+# Generar el instalador Windows x64 (requiere Inno Setup 6)
+python scripts/build_installer.py
+```

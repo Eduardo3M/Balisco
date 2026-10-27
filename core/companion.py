@@ -11,11 +11,15 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-DB_PATH = Path(__file__).resolve().parent.parent / "companion.db"
+from .database import DATA_DIR
 
-def init_companion_db():
+DB_PATH = DATA_DIR / "companion.db"
+
+def init_companion_db(db_path=None):
     """Inicializa las tablas de memoria, estado y bitácora episódica."""
-    conn = sqlite3.connect(DB_PATH)
+    path = Path(db_path or DB_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
     with conn:
         # Estado psicológico actual (tolerancia dinámica, inercia, humor)
         conn.execute("""
@@ -58,11 +62,12 @@ def init_companion_db():
     conn.close()
 
 class CompanionEngine:
-    def __init__(self):
-        init_companion_db()
+    def __init__(self, db_path=None):
+        self.db_path = Path(db_path or DB_PATH)
+        init_companion_db(self.db_path)
 
     def get_state(self):
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM companion_state WHERE id = 1").fetchone()
         conn.close()
@@ -74,7 +79,7 @@ class CompanionEngine:
         - Si el usuario le pide muchas cosas seguidas, la tolerancia baja.
         - Hay un factor de aleatoriedad para evitar números rígidos.
         """
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(self.db_path)
         state = self.get_state()
         racha = state.get("racha_ordenes", 0) + 1
         tolerancia = state.get("tolerancia", 0.75)
@@ -116,7 +121,7 @@ class CompanionEngine:
         }
 
     def registrar_mensaje(self, emisor, texto, sprite=None, humor=None):
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(self.db_path)
         with conn:
             conn.execute("""
                 INSERT INTO historial_chat (emisor, mensaje, sprite_usado, humor_momento)
@@ -126,7 +131,7 @@ class CompanionEngine:
 
     def descansar(self):
         """Restaura la paciencia cuando pasa el tiempo sin atosigarla."""
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(self.db_path)
         with conn:
             conn.execute("""
                 UPDATE companion_state

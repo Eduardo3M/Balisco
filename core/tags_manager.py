@@ -1,7 +1,7 @@
 from collections import Counter
 
 def normalizar(texto):
-    return sorted({t.lstrip('+').casefold() for t in texto.split() if t.lstrip('+')})
+    return list(dict.fromkeys(t.lstrip('+').casefold() for t in str(texto or '').split() if t.lstrip('+')))
 
 def obtener_etiquetas_ordenadas_frecuencia(conexion_db, perfil=None):
     sql="SELECT etiquetas FROM items WHERE disponible=1 AND oculto=0 AND etiquetas != '' AND etiquetas IS NOT NULL"
@@ -33,17 +33,32 @@ def obtener_sugerencias_etiquetas(conexion_db, perfil=None):
 class TagsManager:
     def __init__(self, db): self.db=db
     def actualizar_etiquetas_item(self, drive_id, nuevas_etiquetas):
+        from .library_layout import root_id, move_primary, category_name
+        row=self.db.execute('SELECT * FROM items WHERE drive_id=?',(drive_id,)).fetchone()
+        if not row:return False
+        tags=normalizar(nuevas_etiquetas)
+        linked=bool(root_id(self.db,row['perfil_drive']))
+        if linked and tags and not row['container_parent']:category_name(tags[0])
+        if linked and row['disponible'] and not row['container_parent']:
+            move_primary(self.db,dict(row),tags)
+            return True
         with self.db:
-            return self.db.execute('UPDATE items SET etiquetas=? WHERE drive_id=?',(' '.join('+'+t for t in normalizar(nuevas_etiquetas)),drive_id)).rowcount>0
+            return self.db.execute('UPDATE items SET etiquetas=? WHERE drive_id=?',(' '.join('+'+t for t in tags),drive_id)).rowcount>0
     def asignar_etiquetas_en_lote(self, lista_drive_ids, etiqueta, accion='agregar'):
         tags=normalizar(etiqueta)
         if len(tags)!=1 or accion not in ('agregar','quitar'): raise ValueError('Etiqueta o acción inválida')
-        total=0
-        with self.db:
-            for ident in set(lista_drive_ids):
-                row=self.db.execute('SELECT etiquetas FROM items WHERE drive_id=?',(ident,)).fetchone()
-                if not row: continue
-                values=set(normalizar(row[0]))
-                values.add(tags[0]) if accion=='agregar' else values.discard(tags[0])
-                self.db.execute('UPDATE items SET etiquetas=? WHERE drive_id=?',(' '.join('+'+t for t in sorted(values)),ident)); total+=1
-        return total
+        from .library_layout import root_id, preflight_moves
+        changes=[]
+        for ident in dict.fromkeys(lista_drive_ids):
+            row=self.db.execute('SELECT * FROM items WHERE drive_id=?',(ident,)).fetchone()
+            if not row: continue
+            values=normalizar(row['etiquetas'])
+            if accion=='agregar' and tags[0] not in values: values.append(tags[0])
+            if accion=='quitar': values=[value for value in values if value!=tags[0]]
+            changes.append((dict(row),values))
+        for profile in {item['perfil_drive'] for item,_ in changes}:
+            if root_id(self.db,profile):
+                preflight_moves(self.db,[(item,values) for item,values in changes if item['perfil_drive']==profile])
+        for item,values in changes:
+            self.actualizar_etiquetas_item(item['drive_id'],' '.join('+'+tag for tag in values))
+        return len(changes)

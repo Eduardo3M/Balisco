@@ -12,7 +12,8 @@ class ItemsManager:
         if not row: raise KeyError('Elemento desconocido')
         return dict(row)
     def ruta_local(self,item):
-        root=preferencia(self.db,'unidad_drive:'+item['perfil_drive']) or obtener_letra_drive()
+        from .library_layout import root_id, mounted_drive
+        root=mounted_drive(self.db,item['perfil_drive']) if root_id(self.db,item['perfil_drive']) else preferencia(self.db,'unidad_drive:'+item['perfil_drive']) or obtener_letra_drive()
         rel=PureWindowsPath(item['ruta_relativa'])
         if rel.is_absolute() or rel.drive or '..' in rel.parts or any(p.startswith('.') for p in rel.parts): raise ValueError('Ruta no permitida')
         return Path(root).joinpath(*rel.parts)

@@ -12,7 +12,7 @@ import webview
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from core.database import conectar
-from core.desktop_api import DesktopAPI
+from tests.ui_smoke_fixture import DesktopAPI
 
 RESULT = {}
 

@@ -59,7 +59,7 @@ class Metadata:
         fields=','.join(sorted(required-{'proto'}))+',CAST(proto AS BLOB) AS proto'
         if 'is_tombstone' in columns: fields+=',is_tombstone'
         self.nodes={r['stable_id']:dict(r) for r in db.execute('SELECT '+fields+' FROM items')}
-        self.parents={}; self.children={}; self.cache={}
+        self.parents={}; self.children={}; self.cache={}; self.raw_cache={}
         for child,parent in db.execute('SELECT item_stable_id,parent_stable_id FROM stable_parents ORDER BY parent_stable_id'):
             self.parents.setdefault(child,[]).append(parent)
             self.children.setdefault(parent,[]).append(child)
@@ -78,6 +78,23 @@ class Metadata:
                 if base: result=base+(name,); break
         self.cache[ident]=result
         return result
+    def raw_parts(self, ident, seen=None):
+        """Resolve an internal Drive path, including Balisco's hidden metadata folder."""
+        if ident in self.raw_cache:return self.raw_cache[ident]
+        seen=set() if seen is None else seen
+        if ident in seen:return None
+        node=self.nodes.get(ident)
+        if not node or node['trashed'] or node.get('is_tombstone'):return None
+        name=node['local_title']
+        if name in ('Mi unidad','My Drive'):
+            self.raw_cache[ident]=(name,)
+            return (name,)
+        for parent in self.parents.get(ident,[]):
+            base=self.raw_parts(parent,seen|{ident})
+            if base:
+                self.raw_cache[ident]=base+(name,)
+                return self.raw_cache[ident]
+        return None
     def roots(self, name='Biblioteca'):
         return [i for i,n in self.nodes.items() if n['is_folder'] and n['local_title']==name and self.parts(i) and len(self.parts(i))==2]
 
@@ -100,7 +117,7 @@ def detectar_perfiles_drive(base=None):
 
 def obtener_o_seleccionar_perfil_activo(conexion_db, perfiles=None):
     perfiles=detectar_perfiles_drive() if perfiles is None else perfiles
-    valid=[p for p in perfiles if p['tiene_biblioteca']]
+    valid=[p for p in perfiles if not p.get('error')]
     selected=preferencia(conexion_db,'id_perfil_drive')
     if selected and any(p['id']==selected for p in valid): return selected
     if len(valid)!=1: raise SeleccionRequerida('Selecciona un perfil con Biblioteca: '+', '.join(p['id'] for p in valid))
@@ -108,7 +125,7 @@ def obtener_o_seleccionar_perfil_activo(conexion_db, perfiles=None):
     return valid[0]['id']
 
 def cambiar_perfil_activo(nuevo_id_perfil,conexion_db):
-    if not any(p['id']==nuevo_id_perfil and p['tiene_biblioteca'] for p in detectar_perfiles_drive()): raise ValueError('Perfil no disponible')
+    if not any(p['id']==nuevo_id_perfil and not p.get('error') for p in detectar_perfiles_drive()): raise ValueError('Perfil no disponible')
     with conexion_db: configurar(conexion_db,'id_perfil_drive',nuevo_id_perfil)
     return True
 
@@ -143,12 +160,14 @@ class DriveSync:
             return False
         root=preferencia(self.db,'unidad_drive:'+perfil)
         if not root:
-            try: root=obtener_letra_drive()
+            try:
+                from .library_layout import root_id, mounted_drive
+                root=mounted_drive(self.db,perfil) if root_id(self.db,perfil) else obtener_letra_drive()
             except (FileNotFoundError,SeleccionRequerida): return False
         return Path(root).joinpath(*path.parts).is_file()
 
     def _pdf_replacements(self, rows, perfil, meta):
-        """Match one vanished PDF to one new ID at the exact same DriveFS path."""
+        """Relink unambiguous uploads by path, then by size, format and clean title."""
         incoming_ids={row[0] for row in rows}
         known={item['drive_id']:item for item in self.db.execute('''SELECT drive_id,perfil_drive,tipo,
             notas,descripcion,etiquetas,rating,es_favorito,titulo_personalizado,fijado,
@@ -156,23 +175,45 @@ class DriveSync:
         removed={row['drive_id'] for row in self.db.execute('''SELECT drive_id FROM pending_container_moves
             WHERE perfil_drive=? AND container_drive_id='__removed__' ''',(perfil,))}
         old_by_path={}
-        for item in self.db.execute('SELECT id,drive_id,ruta_relativa,tipo FROM items WHERE perfil_drive=? AND tipo=?',(perfil,'pdf')):
+        old_items=list(self.db.execute('SELECT id,drive_id,ruta_relativa,tipo,tamano_bytes,formato FROM items WHERE perfil_drive=?',(perfil,)))
+        for item in old_items:
             if item['drive_id'] not in incoming_ids:
                 old_by_path.setdefault(item['ruta_relativa'],[]).append(item)
         new_by_path={}
         for row in rows:
             existing=known.get(row[0])
-            pristine=not existing or (existing['perfil_drive']==perfil and existing['tipo']=='pdf' and
+            pristine=not existing or (existing['perfil_drive']==perfil and existing['tipo']==row[3] and
                 not any((existing['notas'],existing['descripcion'],existing['etiquetas'],existing['rating'],
                          existing['es_favorito'],existing['titulo_personalizado'],existing['fijado'],
                          existing['indexar_contenido'],existing['oculto'],existing['ultimo_acceso'],
                          existing['recent_hidden'])) and existing['estado_lectura']=='pendiente' and
                 existing['search_override']==-1)
-            if row[3]=='pdf' and pristine:
+            if row[3]!='curso' and pristine:
                 new_by_path.setdefault(row[6],[]).append(row)
         candidates=[(old_by_path[path][0], new_rows[0])
                     for path,new_rows in new_by_path.items()
-                    if len(new_rows)==1 and len(old_by_path.get(path,()))==1]
+                    if len(new_rows)==1 and len(old_by_path.get(path,()))==1 and old_by_path[path][0]['tipo']==new_rows[0][3]]
+        matched_old={old['drive_id'] for old,_ in candidates}
+        matched_new={new[0] for _,new in candidates}
+        def signature(title,size,fmt,kind):
+            return (int(size or 0),str(fmt or '').casefold(),re.sub(r'\s+',' ',title).strip().casefold(),kind)
+        old_by_fingerprint={}
+        for item in old_items:
+            if item['drive_id'] in incoming_ids or item['drive_id'] in matched_old or item['tipo']=='curso':continue
+            filename=PureWindowsPath(item['ruta_relativa']).name
+            cleaned,_=clean_book_title_and_author(filename,item['tipo']) if item['tipo']=='pdf' else (Path(filename).stem,'')
+            key=signature(cleaned,item['tamano_bytes'],item['formato'],item['tipo'])
+            old_by_fingerprint.setdefault(key,[]).append(item)
+        new_by_fingerprint={}
+        for incoming in rows:
+            if incoming[0] in matched_new or incoming[3]=='curso':continue
+            if old_by_path.get(incoming[6]):continue
+            if incoming not in new_by_path.get(incoming[6],()):continue
+            key=signature(incoming[1],incoming[8],incoming[12],incoming[3])
+            new_by_fingerprint.setdefault(key,[]).append(incoming)
+        candidates.extend((old_by_fingerprint[key][0],new_rows[0])
+                          for key,new_rows in new_by_fingerprint.items()
+                          if len(new_rows)==1 and len(old_by_fingerprint.get(key,()))==1)
         unresolved={old['drive_id'] for old,_ in candidates if old['drive_id'] not in removed}
         live_ids=set()
         if unresolved:
@@ -198,9 +239,28 @@ class DriveSync:
             source.execute('BEGIN'); meta=Metadata(source)
         finally: source.close()
         check_cancelled()
-        roots=meta.roots(ruta_raiz)
-        if len(roots)!=1: raise SeleccionRequerida('Biblioteca raíz ausente o ambigua; no se modifica el catálogo')
-        root=roots[0]; rows=[]; entries=[]; skipped=0; visited=set();container_roots={};internal_ids={}
+        from .library_layout import root_id, root_parts, RESERVED, INBOX, mounted_drive
+        linked=root_id(self.db,perfil)
+        if linked:
+            if preferencia(self.db,'migration_pending:'+perfil)=='1':
+                raise SeleccionRequerida('La biblioteca antigua requiere migración antes de sincronizar')
+            root,base_parts=root_parts(meta,linked)
+            if root is None:
+                with self.db:
+                    self.db.execute('DELETE FROM configuracion WHERE clave=?',('biblioteca_root_id:'+perfil,))
+                    self.db.execute('UPDATE items SET disponible=0 WHERE perfil_drive=?',(perfil,))
+                raise SeleccionRequerida('La carpeta vinculada fue eliminada; selecciona otra ubicación')
+            try:
+                if not mounted_drive(self.db,perfil).joinpath(*base_parts).is_dir():
+                    raise FileNotFoundError('La carpeta vinculada aún no está disponible en Drive')
+            except (FileNotFoundError,ValueError): raise
+            legacy=False
+        else:
+            roots=meta.roots(ruta_raiz)
+            if len(roots)!=1: raise SeleccionRequerida('Selecciona la ubicación de tu biblioteca')
+            root=roots[0];base_parts=meta.parts(root);legacy=True
+        root_depth=len(base_parts)
+        rows=[]; entries=[]; skipped=0; visited=set();container_roots={};internal_ids={};physical_categories={}
 
         subtree_bytes={}; computing=set()
         def compute_size(ident):
@@ -229,14 +289,16 @@ class DriveSync:
             try: drive_id,_=extraer_ids_proto(node['proto'])
             except (ValueError,UnicodeError): skipped+=1; return
 
+            relative=parts[root_depth:]
+            if not legacy and relative and relative[0].casefold() in RESERVED and relative[0].casefold()!=INBOX.casefold(): return
             if node['is_folder']:
-                in_containers=len(parts)==4 and parts[2].casefold()=='containers'
+                in_containers=(len(relative)==2 if not legacy else len(parts)==4 and parts[2].casefold()=='containers')
                 if container_id is not None:
                     internal_ids[drive_id]=container_id
-                    rows.append((drive_id,node['local_title'],'','curso','Containers','',str(PureWindowsPath(*parts)),
+                    rows.append((drive_id,node['local_title'],'','curso',relative[0] if not legacy else 'Containers','',str(PureWindowsPath(*parts)),
                                  'portadas/'+drive_id+'.jpg',subtree_bytes.get(ident,0),node['mime_type'],perfil,'contenedor',''))
                 if container_id is None and in_containers:
-                    categories=parts[2:-1]
+                    categories=relative[:-1] if not legacy else parts[2:-1]
                     cat_macro=categories[0] if categories else 'General'
                     subcat=' / '.join(categories[1:])
                     c_title, c_author = clean_book_title_and_author(node['local_title'], 'curso')
@@ -257,6 +319,7 @@ class DriveSync:
                     ))
                     container_roots[drive_id]=parts
                     container_id=drive_id
+                    if not legacy: physical_categories[drive_id]=cat_macro
                 for cid in meta.children.get(ident,[]):
                     if cid in meta.nodes and meta.parts(cid):
                         visit(cid,container_id)
@@ -272,17 +335,18 @@ class DriveSync:
                 ext=Path(node['local_title']).suffix.lower()
                 tipo=classify_file(node['local_title'],allow_other=True) or 'archivo'
                 title,author=clean_book_title_and_author(node['local_title'],tipo) if tipo=='pdf' else (Path(node['local_title']).stem,'')
-                rows.append((drive_id,title,author,tipo,'Containers','',str(PureWindowsPath(*parts)),
+                rows.append((drive_id,title,author,tipo,relative[0] if not legacy else 'Containers','',str(PureWindowsPath(*parts)),
                              'portadas/'+drive_id+'.jpg',node['file_size'] or 0,node['mime_type'],perfil,
                              'documento' if tipo=='pdf' else 'otro' if tipo=='archivo' else tipo,ext.lstrip('.').upper()))
                 return
 
             ext=Path(node['local_title']).suffix.lower()
-            in_storage=len(parts)>=4 and parts[2].casefold()=='storage'
-            archive_in_containers=len(parts)==4 and parts[2].casefold()=='containers' and ext in {'.zip','.rar'}
-            tipo=classify_file(node['local_title'],allow_other=in_storage or archive_in_containers)
+            if not legacy and len(relative)!=2: return
+            in_storage=legacy and len(parts)>=4 and parts[2].casefold()=='storage'
+            archive_in_containers=legacy and len(parts)==4 and parts[2].casefold()=='containers' and ext in {'.zip','.rar'}
+            tipo=classify_file(node['local_title'],allow_other=not legacy or in_storage or archive_in_containers)
             if tipo is None: return
-            categories=parts[2:-1]
+            categories=relative[:-1] if not legacy else parts[2:-1]
             cat_macro=categories[0] if categories else 'General'
             subcat=' / '.join(categories[1:])
             c_title, c_author = clean_book_title_and_author(node['local_title'], tipo) if tipo=='pdf' else (Path(node['local_title']).stem,'')
@@ -301,6 +365,7 @@ class DriveSync:
                 'contenedor' if archive_in_containers else 'documento' if tipo=='pdf' else 'otro' if tipo=='archivo' else tipo,
                 ext.lstrip('.').upper(),
             ))
+            if not legacy: physical_categories[drive_id]=cat_macro
 
         for child in meta.children.get(root,[]):
             check_cancelled();visit(child)
@@ -321,13 +386,24 @@ class DriveSync:
             entries=[entry for entry in entries if entry[1]!=ident]
             if target=='__removed__':
                 entries=[entry for entry in entries if entry[0]!=ident]
-            elif target:
-                old=self.db.execute('SELECT container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive FROM container_entries WHERE drive_id=?',(ident,)).fetchone()
-                if old: entries.append(tuple(old))
             else:
                 old=self.db.execute('''SELECT drive_id,titulo,autor,tipo,categoria_macro,subcategoria,ruta_relativa,
-                    ruta_portada,tamano_bytes,mime_type,perfil_drive,tipo_contenido,formato FROM items WHERE drive_id=?''',(ident,)).fetchone()
+                    ruta_portada,tamano_bytes,mime_type,perfil_drive,tipo_contenido,formato FROM items WHERE drive_id=? AND disponible=1''',(ident,)).fetchone()
                 if old: rows.append(tuple(old))
+                if target:
+                    old=self.db.execute('SELECT container_drive_id,drive_id,titulo,ruta_relativa,tamano_bytes,mime_type,perfil_drive FROM container_entries WHERE drive_id=?',(ident,)).fetchone()
+                    if old: entries.append(tuple(old))
+        pending_unresolved={move['drive_id'] for move in pending if move['drive_id'] not in resolved}
+        cleanup_dirs=set()
+        if not legacy:
+            drive_path=mounted_drive(self.db,perfil)
+            library_path=drive_path.joinpath(*base_parts).resolve()
+            for row in rows:
+                if row[0] not in physical_categories:continue
+                old=self.db.execute('SELECT ruta_relativa FROM items WHERE drive_id=? AND perfil_drive=?',(row[0],perfil)).fetchone()
+                if old and old['ruta_relativa']!=row[6]:
+                    prior=drive_path.joinpath(*PureWindowsPath(old['ruta_relativa']).parts).resolve().parent
+                    if prior.parent==library_path:cleanup_dirs.add(prior)
         check_cancelled()
         replacements=[] if skipped else self._pdf_replacements(rows,perfil,meta)
         with self.db:
@@ -365,11 +441,24 @@ class DriveSync:
               items.subcategoria IS NOT excluded.subcategoria OR items.ruta_relativa IS NOT excluded.ruta_relativa OR
               items.ruta_portada IS NOT excluded.ruta_portada OR items.tamano_bytes IS NOT excluded.tamano_bytes OR
               items.mime_type IS NOT excluded.mime_type OR items.perfil_drive IS NOT excluded.perfil_drive""",rows)
+            if not legacy:
+                from .tags_manager import normalizar
+                for ident,category in physical_categories.items():
+                    if ident in pending_unresolved:continue
+                    item=self.db.execute('SELECT id,etiquetas FROM items WHERE drive_id=? AND perfil_drive=?',(ident,perfil)).fetchone()
+                    if not item: continue
+                    tags=normalizar(item['etiquetas'])
+                    if category.casefold()==INBOX.casefold(): updated=[]
+                    else:
+                        primary=category.casefold()
+                        updated=[primary,*[tag for tag in tags if tag!=primary]]
+                    value=' '.join('+'+tag for tag in updated)
+                    if value!=item['etiquetas']:
+                        self.db.execute('UPDATE items SET etiquetas=? WHERE id=?',(value,item['id']))
             self.db.executemany('UPDATE items SET container_parent=? WHERE drive_id=? AND perfil_drive=? AND container_parent IS NOT ?',
-                                [(parent,ident,perfil,parent) for ident,parent in internal_ids.items()])
+                                [(parent,ident,perfil,parent) for ident,parent in internal_ids.items() if ident not in pending_unresolved])
             self.db.executemany("UPDATE items SET container_parent='' WHERE drive_id=? AND perfil_drive=? AND container_parent!=''",
-                                [(row[0],perfil) for row in rows if row[0] not in internal_ids and
-                                 row[0] not in {move['drive_id'] for move in pending if move['drive_id'] not in resolved}])
+                                [(row[0],perfil) for row in rows if row[0] not in internal_ids and row[0] not in pending_unresolved])
             check_cancelled()
             if not skipped:
                 self.db.execute('CREATE TEMP TABLE IF NOT EXISTS sync_entries_seen(drive_id TEXT PRIMARY KEY) WITHOUT ROWID')
@@ -400,6 +489,11 @@ class DriveSync:
                     if source.is_file() and not source.is_symlink() and not target.exists():
                         try: shutil.copy2(source,target)
                         except OSError: logging.getLogger(__name__).exception('No se pudo conservar la portada de %s',old['drive_id'])
+        if not legacy:
+            from .library_layout import cleanup_category
+            for folder in cleanup_dirs:
+                try:cleanup_category(folder)
+                except OSError:logging.getLogger(__name__).exception('No se pudo limpiar %s',folder)
         return dict(indexados=len(rows),omitidos_proto=skipped,perfil=perfil,revinculados=len(replacements))
     def exportar_libros(self,destino):
         rows=[dict(r) for r in self.db.execute("SELECT drive_id,titulo,ruta_relativa FROM items WHERE tipo='pdf' AND disponible=1 AND perfil_drive=?",(preferencia(self.db,'id_perfil_drive',''),))]

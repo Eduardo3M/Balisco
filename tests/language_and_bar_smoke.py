@@ -12,7 +12,7 @@ import webview
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from core.database import conectar, configurar
-from core.desktop_api import DesktopAPI
+from tests.ui_smoke_fixture import DesktopAPI
 
 RESULT = {}
 
@@ -86,7 +86,7 @@ def run(window):
           $('languagesDialogClose').click();
 
           // 7. Test recent search history without titles by default and with toggle command
-          localStorage.removeItem('balisco.searchHistory');
+          localStorage.removeItem('balisco.searchHistory.perfil.fixture');
           ghost.hidden = false;
           // Commit a tag, command, and title
           ghost.value = '+matematicas';

@@ -525,7 +525,7 @@ def construir_query_sql(filtros_activos, perfil=None):
         clauses.append('i.perfil_drive=?'); params.append(perfil)
     has_text=any(p['tipo']=='texto_titulo' for p in filtros_activos['pildoras'])
     history=any(p['tipo']=='historial' for p in filtros_activos['pildoras'])
-    clauses.append("(i.container_parent='' OR i.fijado=1"+(" OR i.container_parent!=''" if has_text or history else '')+")")
+    has_filter=any(p['tipo'] not in ('orden','ocultos') for p in filtros_activos['pildoras']); tracked=" OR (i.container_parent!='' AND COALESCE(i.mostrar_en_filtros,1)=1 AND i.search_override!=0 AND (i.es_favorito=1 OR COALESCE(i.rating,0)>0 OR (i.estado_lectura IS NOT NULL AND i.estado_lectura NOT IN ('','pendiente'))))"; clauses.append("(i.container_parent='' OR i.fijado=1"+(" OR i.container_parent!=''" if has_text or history or hidden else (tracked if has_filter else ''))+")")
     tipos=[p['valor'] for p in filtros_activos['pildoras'] if p['tipo']=='tipo']
     if tipos:
         choices=[]
@@ -634,12 +634,13 @@ def construir_query_sql(filtros_activos, perfil=None):
 def buscar(db, filtros, perfil=None, limite=200, offset=0):
     sql,params=construir_query_sql(filtros,perfil)
     limit=max(1,min(int(limite),1000));start=max(0,int(offset))
-    if not any(p['tipo']=='texto_titulo' for p in filtros['pildoras']):
+    has_text=any(p['tipo']=='texto_titulo' for p in filtros['pildoras']);has_filter=any(p['tipo'] not in ('orden','ocultos','historial') for p in filtros['pildoras'])
+    if not has_text and not has_filter:
         return [dict(row) for row in db.execute(sql+' LIMIT ? OFFSET ?',params+[limit,start])]
-    cache={};rows=[]
+    cache={};filter_cache={};rows=[]
     for row in db.execute(sql,params):
         item=dict(row)
-        if internal_searchable(db,item,cache):
+        if ((internal_searchable(db,item,cache) or (is_tracked_container_item(item) and internal_filterable(db,item,filter_cache))) if has_text else internal_filterable(db,item,filter_cache)):
             rows.append(item)
             if len(rows)>=start+limit:break
     return rows[start:]
@@ -657,6 +658,28 @@ def internal_searchable(db,item,cache=None):
     parent,overrides=cache[root]
     if not parent:return False
     enabled=bool(parent['indexar_contenido']);path=tuple(part.casefold() for part in PureWindowsPath(item['ruta_relativa']).parts)
+    for depth in range(1,len(path)):
+        override=overrides.get(path[:depth])
+        if override is not None:enabled=bool(override)
+    if item['search_override']!=-1:enabled=bool(item['search_override'])
+    return enabled
+
+def is_tracked_container_item(item):
+    return bool(item.get('es_favorito') or (item.get('rating') or 0)>0 or (item.get('estado_lectura') and item.get('estado_lectura') not in ('','pendiente')))
+
+def internal_filterable(db,item,cache=None):
+    if not item['container_parent'] or item['fijado']:return True
+    if item.get('mostrar_en_filtros',1)==0:return False
+    cache={} if cache is None else cache
+    root=item['container_parent']
+    if root not in cache:
+        parent=db.execute('SELECT indexar_contenido FROM items WHERE drive_id=?',(root,)).fetchone()
+        overrides={tuple(part.casefold() for part in PureWindowsPath(row['ruta_relativa']).parts):row['search_override']
+                   for row in db.execute("SELECT ruta_relativa,search_override FROM items WHERE container_parent=? AND tipo='curso' AND disponible=1",(root,))
+                   if row['search_override']!=-1}
+        cache[root]=(parent,overrides)
+    _,overrides=cache[root]
+    enabled=True;path=tuple(part.casefold() for part in PureWindowsPath(item['ruta_relativa']).parts)
     for depth in range(1,len(path)):
         override=overrides.get(path[:depth])
         if override is not None:enabled=bool(override)

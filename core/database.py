@@ -51,16 +51,19 @@ def conectar(path=None):
       container_parent TEXT NOT NULL DEFAULT '',
       fijado INTEGER NOT NULL DEFAULT 0 CHECK(fijado IN (0,1)),
       search_override INTEGER NOT NULL DEFAULT -1 CHECK(search_override IN (-1,0,1)),
-      recent_hidden INTEGER NOT NULL DEFAULT 0 CHECK(recent_hidden IN (0,1))
+      recent_hidden INTEGER NOT NULL DEFAULT 0 CHECK(recent_hidden IN (0,1)),
+      mostrar_en_filtros INTEGER NOT NULL DEFAULT 1 CHECK(mostrar_en_filtros IN (0,1))
     );
     CREATE INDEX IF NOT EXISTS idx_items_busqueda ON items(categoria_macro,subcategoria,estado_lectura,rating,es_favorito);
     CREATE INDEX IF NOT EXISTS idx_items_perfil ON items(perfil_drive,disponible);
+    CREATE INDEX IF NOT EXISTS idx_items_profile_path ON items(perfil_drive,ruta_relativa);
     CREATE TABLE IF NOT EXISTS container_entries (
       id INTEGER PRIMARY KEY, container_drive_id TEXT NOT NULL, drive_id TEXT NOT NULL UNIQUE,
       titulo TEXT NOT NULL, ruta_relativa TEXT NOT NULL, tamano_bytes INTEGER NOT NULL DEFAULT 0,
       mime_type TEXT, perfil_drive TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_container_entries_parent ON container_entries(container_drive_id,perfil_drive);
+    CREATE INDEX IF NOT EXISTS idx_container_entries_profile_path ON container_entries(perfil_drive,ruta_relativa);
     CREATE TABLE IF NOT EXISTS pending_container_moves (
       drive_id TEXT PRIMARY KEY, expected_relative TEXT NOT NULL,
       container_drive_id TEXT NOT NULL, perfil_drive TEXT NOT NULL,
@@ -99,7 +102,8 @@ def conectar(path=None):
         ('container_parent',"TEXT NOT NULL DEFAULT ''"),
         ('fijado','INTEGER NOT NULL DEFAULT 0'),
         ('search_override','INTEGER NOT NULL DEFAULT -1'),
-        ('recent_hidden','INTEGER NOT NULL DEFAULT 0')):
+        ('recent_hidden','INTEGER NOT NULL DEFAULT 0'),
+        ('mostrar_en_filtros','INTEGER NOT NULL DEFAULT 1')):
         if column not in columns: db.execute('ALTER TABLE items ADD COLUMN '+column+' '+definition)
     db.execute('CREATE INDEX IF NOT EXISTS idx_items_scope ON items(perfil_drive,disponible,container_parent,oculto)')
     db.execute('CREATE INDEX IF NOT EXISTS idx_items_history ON items(perfil_drive,recent_hidden,ultimo_acceso DESC)')

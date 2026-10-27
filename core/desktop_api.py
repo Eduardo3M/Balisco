@@ -15,19 +15,24 @@ import webbrowser
 from .database import DATA_DIR, conectar, configurar, preferencia, normalize_tag, normalize_search
 from .items_manager import ItemsManager
 from .tags_manager import TagsManager, obtener_etiquetas_ordenadas_frecuencia, obtener_sugerencias_etiquetas
-from .search_parser import agregar_filtro, limpiar_todos_filtros, construir_query_sql, internal_searchable
+from .search_parser import agregar_filtro, limpiar_todos_filtros, construir_query_sql, internal_searchable, internal_filterable, is_tracked_container_item
 from .serendipity import obtener_aleatorio_puro, obtener_semi_aleatorio_contextual, obtener_similares
 from .drive_sync import (DriveSync, Metadata, conectar_db_drive_ro, detectar_perfiles_drive,
                          extraer_ids_proto, ID_PATTERN, obtener_letra_drive, cambiar_perfil_activo, classify_file)
 from .backup_manager import crear_backup_en_biblioteca
 from .metadata_editor import edit_taxonomy
 from .container_ops import (assign_items, ungroup_container, import_container_folder,
-                            import_library_file, library_root, inside, ImportCancelled)
+                            import_library_file, library_root, inside, extract_to_library, ImportCancelled)
 from .cleaner import clean_book_title_and_author
+from .library_layout import root_id, relative_path, INBOX, cleanup_category
 
 class DesktopAPI:
     def __init__(self, data_dir=None, started=None):
-        self._dir=Path(data_dir or DATA_DIR)
+        self._storage=None
+        if data_dir is None:
+            from .profile_storage import ProfileStorage
+            self._storage=ProfileStorage(DATA_DIR)
+        self._dir=self._storage.directory() if self._storage else Path(data_dir)
         self._dbpath=self._dir/'biblioteca.db'
         self._lock=threading.RLock()
         self._sync_lock=threading.RLock()
@@ -40,14 +45,9 @@ class DesktopAPI:
         self._started=started or time.perf_counter()
         self._cover_ids_cache=None
         self._auto_thumbs_cache=None
-        from .migrations import migrate_author
-        migrate_author(self._dbpath)
-        from .migrations import migrate_interested
-        migrate_interested(self._dbpath)
-        from .migrations import migrate_legacy_course_items
-        migrate_legacy_course_items(self._dbpath)
-        from .migrations import migrate_item_file_types
-        migrate_item_file_types(self._dbpath)
+        if not self._storage:
+            from .migrations import migrate_author,migrate_interested,migrate_legacy_course_items,migrate_item_file_types
+            for migration in (migrate_author,migrate_interested,migrate_legacy_course_items,migrate_item_file_types):migration(self._dbpath)
         with closing(conectar(self._dbpath)) as db:
             if 'autor' not in {r[1] for r in db.execute('PRAGMA table_info(items)')}:
                 raise RuntimeError('La base requiere la migración de autor de Fase 1 antes de iniciar.')
@@ -82,11 +82,26 @@ class DesktopAPI:
         db.create_function('normalize_search',1,normalize_search,deterministic=True)
         db.row_factory=sqlite3.Row
         return db
+    def _open_active_profile(self,profile):
+        self._storage.activate(profile)
+        self._dir=self._storage.directory()
+        self._dbpath=self._storage.database()
+        chrome=getattr(self,'_chrome',None)
+        if chrome:chrome.db_path=self._dbpath
+        self._containers.clear();self._container_cache_info.clear();self._profile_sources=None
+        self._undo_deletions.clear();self._invalidate_cover_cache()
+        with self._imports_lock:self._imports.clear()
+    def _select_only_available_profile(self):
+        if not self._storage or self._storage.active:return
+        valid=[p['id'] for p in detectar_perfiles_drive() if not p.get('error')]
+        if len(valid)==1:
+            with self._lock,self._sync_lock:self._open_active_profile(valid[0])
     WINDOW_ACTIONS = frozenset({'close', 'window_minimize', 'window_toggle_maximize',
                                 'window_drag', 'window_resize', 'window_state', 'window_snap'})
     def call(self, action, payload=None):
         """Only this method is exposed to JS. Never accept executable SQL or paths."""
         try:
+            if action in ('bootstrap','drive_status','sync'):self._select_only_available_profile()
             if action=='import_status':
                 with self._imports_lock:
                     job=self._imports.get(str((payload or {}).get('id')))
@@ -94,11 +109,11 @@ class DesktopAPI:
                     return {'ok':True,'data':public}
             if action=='import_jobs':
                 with self._imports_lock:return {'ok':True,'data':[{key:value for key,value in job.items() if key in {'id','state','phase','kind','name','message','error'}} for job in self._imports.values()]}
-            if action=='start_import': return {'ok':True,'data':self._start_import((payload or {}).get('path'))}
+            if action=='start_import': return {'ok':True,'data':self._start_import((payload or {}).get('path'),(payload or {}).get('active_tag'))}
             if action=='cancel_import': return {'ok':True,'data':self._cancel_import(str((payload or {}).get('id','')))}
             if action=='delete_import': return {'ok':True,'data':self._delete_import(str((payload or {}).get('id','')))}
             if action=='sync':
-                with closing(self._connect()) as db:return {'ok':True,'data':self._dispatch(db,action,payload or {})}
+                with self._sync_lock, closing(self._connect()) as db:return {'ok':True,'data':self._dispatch(db,action,payload or {})}
             if action in self.WINDOW_ACTIONS:
                 return {'ok':True,'data':self._window_action(action,payload or {})}
             with self._lock, closing(self._connect()) as db:
@@ -106,19 +121,22 @@ class DesktopAPI:
             return {'ok':True,'data':value}
         except Exception as exc:
             return {'ok':False,'error':str(exc),'kind':type(exc).__name__}
-    def _start_import(self,path):
+    def _start_import(self,path,active_tag=None):
         from pathlib import Path
         if not isinstance(path,str) or not path.strip():raise ValueError('Selecciona un archivo o carpeta válido')
         candidate=Path(str(path or ''))
         if candidate.is_symlink():raise ValueError('No se pueden importar enlaces simbólicos')
         source=candidate.resolve()
         if not source.exists() or (not source.is_file() and not source.is_dir()):raise ValueError('Selecciona un archivo o carpeta válido')
+        if active_tag:
+            from .library_layout import category_name
+            active_tag=category_name(active_tag)
         ident=uuid.uuid4().hex
         kind='folder' if source.is_dir() else 'file'
         with self._imports_lock:
             finished=[key for key,job in self._imports.items() if job.get('state') in ('done','error')]
             for key in finished[:-49]:self._imports.pop(key,None)
-            self._imports[ident]={'id':ident,'state':'running','phase':'preparando','kind':kind,'name':source.name,'message':'Preparando importación'}
+            self._imports[ident]={'id':ident,'state':'running','phase':'preparando','kind':kind,'name':source.name,'message':'Preparando importación','active_tag':active_tag}
         threading.Thread(target=self._run_import,args=(ident,source,kind),daemon=True).start()
         return {'id':ident,'kind':kind,'name':source.name}
     def _cancel_import(self,ident):
@@ -157,8 +175,10 @@ class DesktopAPI:
             library=library_root(db,profile)
             target=Path(raw_path)
             kind=job.get('target_kind')
-            expected_parent=(library/('Containers' if kind=='folder' else 'Storage')).resolve()
+            category=job.get('active_tag') or INBOX if root_id(db,profile) else ('Containers' if kind=='folder' else 'Storage')
+            expected_parent=(library/category).resolve()
             if target.parent.resolve()!=expected_parent:raise ValueError('No se pudo verificar la ruta de la copia cancelada')
+            relative=relative_path(db,profile,target,library) if root_id(db,profile) else str(PureWindowsPath(library.parent.name,'Biblioteca',category,target.name))
         def remove_readonly(function,path,_error):
             os.chmod(path,stat.S_IWRITE|stat.S_IREAD)
             function(path)
@@ -175,7 +195,6 @@ class DesktopAPI:
             except OSError as exc:
                 removal_error=exc;time.sleep(.2*(attempt+1))
         if removal_error and target.exists():raise removal_error
-        relative=str(PureWindowsPath(library.parent.name,'Biblioteca','Containers' if kind=='folder' else 'Storage',target.name))
         with self._lock,self._sync_lock,closing(self._connect()) as db:
             with db:
                 if kind=='folder':
@@ -220,12 +239,36 @@ class DesktopAPI:
                     if cancelled():raise ImportCancelled()
                 progress=lambda phase,detail=None:self._set_import_phase(ident,phase,detail)
                 on_target=lambda path,target_kind:self._set_import_target(ident,path,target_kind,profile)
+                with self._imports_lock:active_tag=self._imports.get(ident,{}).get('active_tag')
                 if cancelled():raise ImportCancelled()
                 if kind=='folder':
-                    data=import_container_folder(db,profile,str(source),progress=progress,cancelled=cancelled,on_target=on_target)
+                    data=import_container_folder(db,profile,str(source),progress=progress,cancelled=cancelled,on_target=on_target,active_tag=active_tag)
                 else:
                     data=import_library_file(db,profile,str(source),progress=progress,cancelled=cancelled,on_target=on_target,
-                                             thumbnail_dir=self._dir/'portadas_auto')
+                                             thumbnail_dir=None if root_id(db,profile) else self._dir/'portadas_auto',active_tag=active_tag)
+                if root_id(db,profile):
+                    from .container_ops import drive_id_for_path
+                    from .cover_engine import _dehydrate
+                    from .thumbnailer import create_thumbnail
+                    with self._imports_lock:target_path=self._imports.get(ident,{}).get('target_path')
+                    if target_path:
+                        relative=relative_path(db,profile,target_path,library_root(db,profile))
+                        imported_id=drive_id_for_path(profile,relative,is_folder=kind=='folder',timeout=90,cancelled=cancelled)
+                        self._set_import_drive_id(ident,imported_id)
+                        try:
+                            target=Path(target_path)
+                            if kind=='folder':
+                                options=[child for child in target.iterdir() if child.is_file()]
+                                options=sorted(options,key=lambda child:(child.suffix.casefold() not in ('.jpg','.jpeg','.png','.webp'),child.suffix.casefold() not in ('.pdf','.epub'),child.name.casefold()))
+                                candidate=next((child for child in options if child.suffix.casefold() in ('.jpg','.jpeg','.png','.webp','.pdf','.epub')),None)
+                            else:candidate=target
+                            if candidate:
+                                create_thumbnail(candidate,self._dir/'portadas'/(imported_id+'.jpg'))
+                                _dehydrate(candidate)
+                                self._invalidate_cover_cache()
+                        except Exception:
+                            import logging
+                            logging.getLogger(__name__).exception('No se pudo generar la portada del elemento importado')
             with self._lock:self._containers.clear();self._container_cache_info.clear()
             with self._imports_lock:
                 cancelled_at_finish=self._imports[ident].get('cancel_requested')
@@ -295,7 +338,7 @@ class DesktopAPI:
     def _container_payload(self,db,container_id,profile):
         records=list(self._containers[container_id].values())
         metadata={row['drive_id']:dict(row) for row in db.execute('''SELECT drive_id,titulo,autor,etiquetas,rating,
-            es_favorito,estado_lectura,tipo_contenido,formato,fijado,search_override,ultimo_acceso,recent_hidden
+            es_favorito,estado_lectura,tipo_contenido,formato,fijado,oculto,idioma,search_override,mostrar_en_filtros,ultimo_acceso,recent_hidden
             FROM items WHERE container_parent=? AND perfil_drive=? AND disponible=1''',(container_id,profile))}
         for record in records:
             if record['id'] in metadata:record.update(metadata[record['id']])
@@ -304,6 +347,59 @@ class DesktopAPI:
     def _dispatch(self,db,action,p):
         profile=preferencia(db,'id_perfil_drive','')
         manager=ItemsManager(db)
+        if action=='drive_status':
+            from .drive_setup import status
+            return status(db)
+        if action=='drive_install':
+            from .drive_setup import open_install_page
+            return open_install_page()
+        if action=='drive_start':
+            from .drive_setup import launch_drive
+            return launch_drive()
+        if action=='library_pick':
+            from .drive_setup import link_folder
+            from tkinter import Tk, filedialog
+            root=Tk();root.withdraw();root.attributes('-topmost',True)
+            try:path=filedialog.askdirectory(parent=root,title='Selecciona tu biblioteca en Google Drive')
+            finally:root.destroy()
+            return link_folder(db,profile,path) if path else None
+        if action=='library_create':
+            from .drive_setup import link_folder
+            from .container_ops import valid_name
+            from tkinter import Tk, filedialog
+            root=Tk();root.withdraw();root.attributes('-topmost',True)
+            try:parent=filedialog.askdirectory(parent=root,title='Selecciona dónde crear la biblioteca')
+            finally:root.destroy()
+            if not parent:return None
+            name=valid_name(p.get('name','Biblioteca'))
+            parent=Path(parent).resolve()
+            drive=Path(preferencia(db,'unidad_drive:'+profile)).resolve() if preferencia(db,'unidad_drive:'+profile) else Path(parent.anchor)
+            if not parent.is_relative_to(drive):raise ValueError('Selecciona una ubicación dentro de Google Drive')
+            parts=parent.relative_to(drive).parts
+            if not parts or parts[0] not in ('Mi unidad','My Drive'):
+                raise ValueError('Selecciona una ubicación dentro de Mi unidad')
+            folder=parent/name
+            folder.mkdir()
+            return link_folder(db,profile,folder)
+        if action=='migration_preview':
+            from .migrations import library_migration_preview
+            return library_migration_preview(db,profile)
+        if action=='migration_run':
+            from .migrations import migrate_library_layout
+            return migrate_library_layout(db,profile)
+        if action=='render_covers_local':
+            from .cover_engine import render_local
+            result=render_local(db,profile,p.get('ids'),self._dir)
+            self._invalidate_cover_cache()
+            return result
+        if action=='render_covers_colab':
+            from .cover_engine import queue_colab
+            return queue_colab(db,profile,p.get('ids'),self._dir)
+        if action=='cover_batch_check':
+            from .cover_engine import collect_batch
+            result=collect_batch(db,profile,self._dir)
+            if result['imported']:self._invalidate_cover_cache()
+            return result
         if action=='bootstrap':
             row_langs=db.execute("SELECT valor FROM configuracion WHERE clave='idiomas'").fetchone()
             languages=json.loads(row_langs['valor']) if row_langs and row_langs['valor'] else ['Español', 'Inglés']
@@ -317,11 +413,12 @@ class DesktopAPI:
             filters=limpiar_todos_filtros()
             for token in p.get('tokens',[]): filters=agregar_filtro(str(token),filters)
             sql,args=construir_query_sql(filters,profile)
-            sql=sql.replace('SELECT i.*','SELECT i.drive_id,i.titulo,i.autor,i.idioma,i.tipo,i.tipo_contenido,i.formato,i.estado_lectura,i.es_favorito,i.rating,i.tamano_bytes,i.categoria_macro,i.indexar_contenido,i.oculto,i.container_parent,i.fijado,i.search_override,i.ruta_relativa,i.perfil_drive')
+            sql=sql.replace('SELECT i.*','SELECT i.drive_id,i.titulo,i.autor,i.idioma,i.tipo,i.tipo_contenido,i.formato,i.estado_lectura,i.es_favorito,i.rating,i.tamano_bytes,i.categoria_macro,i.indexar_contenido,i.oculto,i.container_parent,i.fijado,i.search_override,i.mostrar_en_filtros,i.ruta_relativa,i.perfil_drive')
             items=[dict(r) for r in db.execute(sql,args)]
-            if any(p['tipo']=='texto_titulo' for p in filters['pildoras']):
-                cache={}
-                items=[item for item in items if self._internal_searchable(db,item,cache)]
+            has_text=any(p['tipo']=='texto_titulo' for p in filters['pildoras']);has_filter=any(p['tipo'] not in ('orden','ocultos','historial') for p in filters['pildoras'])
+            if has_text or has_filter:
+                cache={};filter_cache={}
+                items=[item for item in items if ((self._internal_searchable(db,item,cache) or (is_tracked_container_item(item) and internal_filterable(db,item,filter_cache))) if has_text else internal_filterable(db,item,filter_cache))]
             if any(p['tipo']=='sin_portada' for p in filters['pildoras']):
                 items=[item for item in items if not self._item_has_cover(item, profile)]
             elif any(p['tipo']=='con_portada' for p in filters['pildoras']):
@@ -342,7 +439,11 @@ class DesktopAPI:
             with db:db.execute('UPDATE items SET indexar_contenido=? WHERE id=?',(enabled,item['id']))
             return {'indexar_contenido':int(p['enabled'])}
         if action=='detail':
-            item=self._item(db,p['id']); item['url']=manager.url(p['id']); return item
+            item=self._item(db,p['id']); item['url']=manager.url(p['id'])
+            if item.get('container_parent'):
+                parent=db.execute('SELECT titulo FROM items WHERE drive_id=?',(item['container_parent'],)).fetchone()
+                item['container_title']=parent['titulo'] if parent else ''
+            return item
         if action=='update':
             self._item(db,p['id'])
             methods={'titulo':manager.cambiar_titulo,'autor':manager.cambiar_autor,'idioma':manager.cambiar_idioma,'notas':manager.actualizar_notas,'rating':manager.cambiar_rating,'estado_lectura':manager.cambiar_estado_lectura,'es_favorito':manager.cambiar_favorito,'etiquetas':TagsManager(db).actualizar_etiquetas_item}
@@ -352,7 +453,7 @@ class DesktopAPI:
             ids=p.get('ids')
             if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)) or any(not isinstance(ident,str) for ident in ids):
                 raise ValueError('Selección inválida')
-            fields=('fijado','es_favorito','oculto','rating','estado_lectura','idioma')
+            fields=('fijado','es_favorito','oculto','mostrar_en_filtros','rating','estado_lectura','idioma')
             columns=','.join(f'MIN({field}) AS min_{field},MAX({field}) AS max_{field}' for field in fields)
             result={}
             for start in range(0,len(ids),500):
@@ -371,7 +472,7 @@ class DesktopAPI:
             ids=p.get('ids');field=p.get('field');value=p.get('value')
             if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)):
                 raise ValueError('Selección inválida')
-            if field in ('es_favorito','fijado','oculto') and type(value) is bool:value=int(value)
+            if field in ('es_favorito','fijado','oculto','mostrar_en_filtros') and type(value) is bool:value=int(value)
             elif field=='rating' and type(value) is int and value in range(6):pass
             elif field=='estado_lectura' and value in ('pendiente','interesado','leyendo','leido','abandonado'):pass
             elif field=='idioma' and isinstance(value,str):pass
@@ -384,7 +485,8 @@ class DesktopAPI:
             if not isinstance(ids,list) or not ids or len(ids)>10000 or len(ids)!=len(set(ids)) or type(value) is not int or value not in (-1,0,1):
                 raise ValueError('Selección de búsqueda inválida')
             items=[self._item(db,ident) for ident in ids]
-            if any(not item['container_parent'] for item in items):raise ValueError('Selecciona contenido de un contenedor')
+            items=[item for item in (self._item(db,ident) for ident in ids) if item['container_parent']]
+            if not items:raise ValueError('Selecciona contenido de un contenedor')
             with db:db.executemany('UPDATE items SET search_override=? WHERE id=?',[(value,item['id']) for item in items])
             return {'updated':len(items)}
         if action=='remove_recent':
@@ -416,19 +518,28 @@ class DesktopAPI:
             if field=='etiquetas' and len(normalizar(value))!=1: raise ValueError('Una etiqueta por cambio')
             if field=='autor' and ('\n' in value or '\r' in value): raise ValueError('Un autor por cambio')
             items=[self._item(db,ident) for ident in ids]
-            with db:
+            tag_changes=[]
+            if field=='etiquetas':
                 for item in items:
-                    if field=='etiquetas':
-                        names=set(normalizar(item['etiquetas'])); name=normalizar(value)[0]
-                        if operation=='add': names.add(name)
-                        else: names.discard(name)
-                        updated=' '.join('+'+name for name in sorted(names))
-                    else:
-                        names=[name.strip() for name in item['autor'].splitlines() if name.strip()]
-                        if operation=='add' and not any(name.casefold()==value.casefold() for name in names): names.append(value)
-                        elif operation=='remove': names=[name for name in names if name.casefold()!=value.casefold()]
-                        updated='\n'.join(names)
-                    db.execute('UPDATE items SET '+field+'=? WHERE id=?',(updated,item['id']))
+                    names=normalizar(item['etiquetas']); name=normalizar(value)[0]
+                    if operation=='add' and name not in names:names.append(name)
+                    elif operation=='remove':names=[tag for tag in names if tag!=name]
+                    elif operation=='set':names=[name,*[tag for tag in names if tag!=name]]
+                    tag_changes.append((item,names))
+                if root_id(db,profile):
+                    from .library_layout import preflight_moves
+                    preflight_moves(db,tag_changes)
+            if field=='etiquetas':
+                tag_manager=TagsManager(db)
+                for item,names in tag_changes:
+                    tag_manager.actualizar_etiquetas_item(item['drive_id'],' '.join('+'+tag for tag in names))
+            else:
+                for item in items:
+                    names=[name.strip() for name in item['autor'].splitlines() if name.strip()]
+                    if operation=='add' and not any(name.casefold()==value.casefold() for name in names): names.append(value)
+                    elif operation=='remove': names=[name for name in names if name.casefold()!=value.casefold()]
+                    updated='\n'.join(names)
+                    with db:db.execute('UPDATE items SET autor=? WHERE id=?',(updated,item['id']))
             return {'updated':len(items)}
         if action=='random':
             fn=obtener_semi_aleatorio_contextual if p.get('contextual') else obtener_aleatorio_puro
@@ -463,12 +574,12 @@ class DesktopAPI:
             return result
         if action=='import_container':
             if not isinstance(p.get('path'),str): raise ValueError('Carpeta inválida')
-            result=import_container_folder(db,profile,p['path'])
+            result=import_container_folder(db,profile,p['path'],active_tag=p.get('active_tag'))
             self._containers.clear();self._container_cache_info.clear()
             return result
         if action=='import_file':
             if not isinstance(p.get('path'),str):raise ValueError('Archivo inválido')
-            return import_library_file(db,profile,p['path'],thumbnail_dir=self._dir/'portadas_auto')
+            return import_library_file(db,profile,p['path'],thumbnail_dir=None if root_id(db,profile) else self._dir/'portadas_auto',active_tag=p.get('active_tag'))
         if action=='pick_import_folder':
             import tkinter as tk
             from tkinter import filedialog
@@ -694,17 +805,28 @@ class DesktopAPI:
             with self._sync_lock:result=DriveSync(db).sincronizar_biblioteca(perfil=profile or None)
             DriveSync(db).exportar_libros(self._dir/'export_libros.json'); self._containers.clear(); self._container_cache_info.clear(); self._profile_sources=None; self._invalidate_cover_cache(); return result
         if action=='profiles': return detectar_perfiles_drive()
-        if action=='profile': cambiar_perfil_activo(p['id'],db); self._containers.clear(); self._container_cache_info.clear(); self._profile_sources=None; self._invalidate_cover_cache(); return True
+        if action=='profile':
+            if self._storage:
+                if not any(entry['id']==p['id'] and not entry.get('error') for entry in detectar_perfiles_drive()):
+                    raise ValueError('Cuenta de Drive no disponible')
+                with self._imports_lock:
+                    if any(job.get('state')=='running' for job in self._imports.values()):
+                        raise ValueError('Espera a que termine o cancela la carga antes de cambiar de cuenta')
+                with self._sync_lock:self._open_active_profile(p['id'])
+            else:
+                cambiar_perfil_activo(p['id'],db)
+                self._containers.clear();self._container_cache_info.clear();self._profile_sources=None;self._invalidate_cover_cache()
+            return True
         if action=='backup':
             return crear_backup_en_biblioteca(library_root(db,profile),db,self._dir)
         if action=='backup_list':
-            folder=library_root(db,profile)/'.balisco_backup'
+            folder=library_root(db,profile)/('.balisco/backups' if root_id(db,profile) else '.balisco_backup')
             if not folder.is_dir(): return []
             return [{'name':file.name,'size':file.stat().st_size} for file in sorted(folder.glob('Balisco_Backup_*.zip'),reverse=True) if file.is_file() and not file.is_symlink()]
         if action=='backup_reveal':
             name=Path(str(p.get('name',''))).name
             if not name.startswith('Balisco_Backup_') or not name.endswith('.zip'): raise ValueError('Respaldo inválido')
-            path=library_root(db,profile)/'.balisco_backup'/name
+            path=library_root(db,profile)/('.balisco/backups' if root_id(db,profile) else '.balisco_backup')/name
             if not path.is_file() or path.is_symlink(): raise FileNotFoundError('Respaldo ausente')
             import subprocess
             subprocess.Popen(['explorer.exe','/select,',str(path)])
@@ -761,6 +883,7 @@ class DesktopAPI:
             existing={row['drive_id']:row for row in db.execute('''SELECT drive_id,titulo,titulo_personalizado,tipo,tipo_contenido,formato,
                 categoria_macro,ruta_relativa,tamano_bytes,mime_type,disponible FROM items
                 WHERE container_parent=? AND perfil_drive=?''',(item['drive_id'],profile))}
+            container_category=item['categoria_macro'] if root_id(db,profile) else 'Containers'
             changed=[]
             for record in records:
                 filename=PureWindowsPath(record['path']).name
@@ -770,17 +893,17 @@ class DesktopAPI:
                 title=filename if folder else clean_book_title_and_author(filename,kind)[0] if kind=='pdf' else Path(filename).stem
                 fmt='' if folder else Path(filename).suffix.lstrip('.').upper()
                 old=existing.get(record['id'])
-                if old and old['disponible'] and old['tipo']==kind and old['tipo_contenido']==content and old['formato']==fmt and old['categoria_macro']=='Containers' and old['ruta_relativa']==record['path'] and old['tamano_bytes']==record['size'] and old['mime_type']==record['mime'] and (old['titulo_personalizado'] or old['titulo']==title):
+                if old and old['disponible'] and old['tipo']==kind and old['tipo_contenido']==content and old['formato']==fmt and old['categoria_macro']==container_category and old['ruta_relativa']==record['path'] and old['tamano_bytes']==record['size'] and old['mime_type']==record['mime'] and (old['titulo_personalizado'] or old['titulo']==title):
                     continue
-                changed.append((record['id'],title,'',kind,content,fmt,record['path'],
+                changed.append((record['id'],title,'',kind,content,fmt,container_category,record['path'],
                                 'portadas/'+record['id']+'.jpg',record['size'],record['mime'],profile,item['drive_id']))
             with db:
                 db.executemany('''INSERT INTO items(drive_id,titulo,autor,tipo,tipo_contenido,formato,categoria_macro,
                         ruta_relativa,ruta_portada,tamano_bytes,mime_type,perfil_drive,disponible,container_parent)
-                        VALUES(?,?,?,?,?,?,'Containers',?,?,?,?,?,1,?) ON CONFLICT(drive_id) DO UPDATE SET
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?) ON CONFLICT(drive_id) DO UPDATE SET
                         titulo=CASE WHEN items.titulo_personalizado=1 THEN items.titulo ELSE excluded.titulo END,
                         tipo=excluded.tipo,tipo_contenido=excluded.tipo_contenido,formato=excluded.formato,
-                        categoria_macro='Containers',ruta_relativa=excluded.ruta_relativa,
+                        categoria_macro=excluded.categoria_macro,ruta_relativa=excluded.ruta_relativa,
                         tamano_bytes=excluded.tamano_bytes,mime_type=excluded.mime_type,
                         perfil_drive=excluded.perfil_drive,disponible=1,container_parent=excluded.container_parent''',changed)
             known={record['id'] for record in records}
@@ -860,22 +983,22 @@ class DesktopAPI:
             container=self._item(db,p['container'])
             if container['tipo']!='curso': raise ValueError('No es un contenedor')
             ident=str(p.get('id',''));field=p.get('field');value=p.get('value')
-            allowed={'es_favorito','rating','estado_lectura'}
+            allowed={'es_favorito','rating','estado_lectura','oculto','mostrar_en_filtros'}
             if field not in allowed: raise ValueError('Propiedad del recurso no permitida')
             record=self._containers.get(p['container'],{}).get(ident)
             if not record:
                 self._dispatch(db,'container',{'id':p['container']})
                 record=self._containers.get(p['container'],{}).get(ident)
             if not record: raise ValueError('El recurso ya no está en este contenedor')
-            if field=='es_favorito' and type(value) is not bool: raise ValueError('Favorito inválido')
+            if field in ('es_favorito','oculto','mostrar_en_filtros') and type(value) is not bool: raise ValueError('Favorito inválido')
             if field=='rating' and (type(value) is not int or value not in range(6)): raise ValueError('Calificación inválida')
             if field=='estado_lectura' and value not in ('pendiente','interesado','leyendo','leido','abandonado'):
                 raise ValueError('Estado de lectura inválido')
             with db:
                 updated=db.execute('UPDATE items SET '+field+'=? WHERE drive_id=? AND perfil_drive=?',
-                                   (int(value) if field=='es_favorito' else value,ident,profile)).rowcount
+                                   (int(value) if field in ('es_favorito','oculto','mostrar_en_filtros') else value,ident,profile)).rowcount
             if not updated: raise ValueError('Este archivo todavía no tiene propiedades de biblioteca')
-            return {'field':field,'value':int(value) if field=='es_favorito' else value}
+            return {'field':field,'value':int(value) if field in ('es_favorito','oculto','mostrar_en_filtros') else value}
         if action=='container_move_to_storage':
             container=self._item(db,p['container'])
             self._dispatch(db,'container',{'id':p['container']})
@@ -886,27 +1009,32 @@ class DesktopAPI:
             source=inside(manager.ruta_local(dict(container,ruta_relativa=record['path'])),container_path)
             if not source.is_file(): raise FileNotFoundError('El archivo ya no está disponible en el contenedor')
             filename=PureWindowsPath(record['path']).name
-            storage=library/'Storage';storage.mkdir(exist_ok=True)
+            if root_id(db,profile):
+                result=extract_to_library(db,profile,container,[source])
+                self._containers.get(p['container'],{}).pop(p['id'],None)
+                return {'id':p['id'],'title':filename,'path':relative_path(db,profile,result['paths'][0],library)}
+            linked=bool(root_id(db,profile))
+            storage=container_path.parent if linked else library/'Storage';storage.mkdir(exist_ok=True)
             target=inside(storage/filename,library)
             if target.exists(): raise FileExistsError('Ya existe un archivo con ese nombre en Storage')
             shutil.move(str(source),str(target))
             ext=target.suffix.casefold()
             tipo=classify_file(filename,allow_other=True)
             tipo_contenido='documento' if tipo=='pdf' else 'otro' if tipo=='archivo' else tipo
-            relative=str(PureWindowsPath(library.parent.name,'Biblioteca','Storage',filename))
+            relative=relative_path(db,profile,target,library) if linked else str(PureWindowsPath(library.parent.name,'Biblioteca','Storage',filename))
             try:
                 with db:
                     item=db.execute('SELECT id FROM items WHERE drive_id=? AND perfil_drive=?',(p['id'],profile)).fetchone()
                     if item:
-                        db.execute('''UPDATE items SET tipo=?,tipo_contenido=?,formato=?,categoria_macro='Storage',
+                        db.execute('''UPDATE items SET tipo=?,tipo_contenido=?,formato=?,categoria_macro=?,
                             subcategoria='',ruta_relativa=?,tamano_bytes=?,mime_type=?,disponible=1,container_parent='' WHERE id=?''',
-                            (tipo,tipo_contenido,ext.lstrip('.').upper(),relative,target.stat().st_size,record.get('mime'),item['id']))
+                            (tipo,tipo_contenido,ext.lstrip('.').upper(),storage.name,relative,target.stat().st_size,record.get('mime'),item['id']))
                     else:
                         title,author=clean_book_title_and_author(filename,tipo) if tipo=='pdf' else (target.stem,'')
                         db.execute('''INSERT INTO items(drive_id,titulo,autor,tipo,tipo_contenido,formato,categoria_macro,
                             ruta_relativa,ruta_portada,tamano_bytes,mime_type,perfil_drive,disponible)
-                            VALUES(?,?,?,?,?,?,'Storage',?,?,?, ?,?,1)''',
-                            (p['id'],title,author,tipo,tipo_contenido,ext.lstrip('.').upper(),relative,
+                            VALUES(?,?,?,?,?,?, ?,?,?,?, ?,?,1)''',
+                            (p['id'],title,author,tipo,tipo_contenido,ext.lstrip('.').upper(),storage.name,relative,
                              'portadas/'+p['id']+'.jpg',target.stat().st_size,record.get('mime'),profile))
                     db.execute('DELETE FROM container_entries WHERE drive_id=? AND container_drive_id=?',(p['id'],p['container']))
                     db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
@@ -917,6 +1045,7 @@ class DesktopAPI:
                 shutil.move(str(target),str(source))
                 raise
             self._containers.get(p['container'],{}).pop(p['id'],None)
+            if linked:cleanup_category(source.parent)
             return {'id':p['id'],'title':filename,'path':relative}
         if action=='container_move_folder_to_storage':
             container=self._item(db,p['container'])
@@ -931,7 +1060,14 @@ class DesktopAPI:
             library=library_root(db,profile);container_path=manager.ruta_local(container)
             source=inside(manager.ruta_local(dict(container,ruta_relativa=str(PureWindowsPath(container['ruta_relativa'],*parts)))),container_path)
             if not source.is_dir(): raise FileNotFoundError('La carpeta ya no está disponible')
-            storage=library/'Storage';storage.mkdir(exist_ok=True)
+            if root_id(db,profile):
+                result=extract_to_library(db,profile,container,[source])
+                for record in list(records.values()):
+                    if record.get('title','').replace('\\','/').casefold()==folder.casefold() or record.get('title','').replace('\\','/').casefold().startswith(prefix):
+                        records.pop(record['id'],None)
+                return {'title':parts[-1],'moved':len(files),'path':relative_path(db,profile,result['paths'][0],library)}
+            linked=bool(root_id(db,profile))
+            storage=container_path.parent if linked else library/'Storage';storage.mkdir(exist_ok=True)
             target=inside(storage/parts[-1],library)
             if target.exists(): raise FileExistsError('Ya existe una carpeta con ese nombre en Storage')
             shutil.move(str(source),str(target))
@@ -942,18 +1078,18 @@ class DesktopAPI:
                         destination=target.joinpath(*relative_parts)
                         ext=destination.suffix.casefold();tipo=classify_file(destination.name,allow_other=True)
                         tipo_contenido='documento' if tipo=='pdf' else 'otro' if tipo=='archivo' else tipo
-                        relative=str(PureWindowsPath(library.parent.name,'Biblioteca','Storage',parts[-1],*relative_parts))
+                        relative=relative_path(db,profile,destination,library) if linked else str(PureWindowsPath(library.parent.name,'Biblioteca','Storage',parts[-1],*relative_parts))
                         item=db.execute('SELECT id FROM items WHERE drive_id=? AND perfil_drive=?',(record['id'],profile)).fetchone()
                         if item:
-                            db.execute('''UPDATE items SET tipo=?,tipo_contenido=?,formato=?,categoria_macro='Storage',
+                            db.execute('''UPDATE items SET tipo=?,tipo_contenido=?,formato=?,categoria_macro=?,
                                 subcategoria='',ruta_relativa=?,tamano_bytes=?,mime_type=?,disponible=1,container_parent='' WHERE id=?''',
-                                (tipo,tipo_contenido,ext.lstrip('.').upper(),relative,destination.stat().st_size,record.get('mime'),item['id']))
+                                (tipo,tipo_contenido,ext.lstrip('.').upper(),storage.name,relative,destination.stat().st_size,record.get('mime'),item['id']))
                         else:
                             title,author=clean_book_title_and_author(destination.name,tipo) if tipo=='pdf' else (destination.stem,'')
                             db.execute('''INSERT INTO items(drive_id,titulo,autor,tipo,tipo_contenido,formato,categoria_macro,
                                 ruta_relativa,ruta_portada,tamano_bytes,mime_type,perfil_drive,disponible)
-                                VALUES(?,?,?,?,?,?,'Storage',?,?,?, ?,?,1)''',
-                                (record['id'],title,author,tipo,tipo_contenido,ext.lstrip('.').upper(),relative,
+                                VALUES(?,?,?,?,?,?, ?,?,?,?, ?,?,1)''',
+                                (record['id'],title,author,tipo,tipo_contenido,ext.lstrip('.').upper(),storage.name,relative,
                                  'portadas/'+record['id']+'.jpg',destination.stat().st_size,record.get('mime'),profile))
                         db.execute('DELETE FROM container_entries WHERE drive_id=? AND container_drive_id=?',(record['id'],p['container']))
                         db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
@@ -965,6 +1101,7 @@ class DesktopAPI:
             for record in list(records.values()):
                 if record.get('title','').replace('\\','/').casefold()==folder.casefold() or record.get('title','').replace('\\','/').casefold().startswith(prefix):
                     records.pop(record['id'],None)
+            if linked:cleanup_category(source.parent)
             return {'title':parts[-1],'moved':len(files)}
         if action=='container_trash_folder':
             container=self._item(db,p['container'])
@@ -1052,10 +1189,10 @@ class DesktopAPI:
             return True
         if action=='companion_get':
             from .companion import CompanionEngine
-            return CompanionEngine().get_state()
+            return CompanionEngine(self._dir/'companion.db').get_state()
         if action=='companion_interact':
             from .companion import CompanionEngine
-            engine = CompanionEngine()
+            engine = CompanionEngine(self._dir/'companion.db')
             tipo = p.get('tipo', 'charla')
             res = engine.update_interaction(tipo)
             if p.get('mensaje'):
@@ -1065,6 +1202,6 @@ class DesktopAPI:
             return res
         if action=='companion_descansar':
             from .companion import CompanionEngine
-            CompanionEngine().descansar()
-            return CompanionEngine().get_state()
+            CompanionEngine(self._dir/'companion.db').descansar()
+            return CompanionEngine(self._dir/'companion.db').get_state()
         raise ValueError('Acción no soportada')

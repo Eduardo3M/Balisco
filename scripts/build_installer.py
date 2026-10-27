@@ -63,7 +63,10 @@ def main():
         subprocess.run([str(bundle/'Balisco.exe'), '--buscar', 'balisco-build-check'],
                        env=smoke_env, cwd=bundle, check=True, timeout=30,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        with closing(sqlite3.connect(Path(data_dir)/'biblioteca.db')) as database:
+        db_files = list((Path(data_dir)/'perfiles').glob('*/biblioteca.db'))
+        if not db_files:
+            raise RuntimeError('El paquete no inicializó la base de datos del perfil.')
+        with closing(sqlite3.connect(db_files[0])) as database:
             if database.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise RuntimeError('La base del paquete no pasó la comprobación de integridad.')
     subprocess.run([compiler, '/Qp', f'/DAppVersion={version}', str(ROOT/'scripts'/'Balisco.iss')],

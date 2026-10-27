@@ -4,6 +4,96 @@ from pathlib import Path
 import sqlite3
 from datetime import datetime
 
+
+def library_migration_preview(db, profile):
+    """Build a collision-checked plan without touching Drive."""
+    from .library_layout import library_root, mounted_drive, category_name, INBOX
+    from .tags_manager import normalizar
+    root=library_root(db,profile)
+    drive=mounted_drive(db,profile)
+    from pathlib import PureWindowsPath
+    prefix=PureWindowsPath(*root.relative_to(drive).parts)
+    labels={path.casefold():normalizar(tags) for path,tags in db.execute(
+        "SELECT ruta_relativa,etiquetas FROM items WHERE perfil_drive=? AND container_parent=''",(profile,))}
+    moves=[]
+    root_entries=list(root.iterdir())
+    old_folders={child.name.casefold():child for child in root_entries if child.is_dir()}
+    for legacy in ('Storage','Containers'):
+        source_dir=old_folders.get(legacy.casefold())
+        if source_dir is None: continue
+        for source in source_dir.iterdir():
+            tags=labels.get(str(prefix/source_dir.name/source.name).casefold(),[])
+            category=category_name(tags[0]) if tags else INBOX
+            moves.append((source,root/category/source.name))
+    for source in root_entries:
+        if source.is_file() and source.name.casefold()!='desktop.ini':
+            tags=labels.get(str(prefix/source.name).casefold(),[])
+            category=category_name(tags[0]) if tags else INBOX
+            moves.append((source,root/category/source.name))
+    destinations=set()
+    for source,target in moves:
+        key=str(target).casefold()
+        if target.exists() or key in destinations:
+            raise FileExistsError('La migración tiene un conflicto en '+str(target))
+        destinations.add(key)
+    return {'moves':[{'from':str(source),'to':str(target)} for source,target in moves],
+            'count':len(moves),'root':str(root)}
+
+
+def migrate_library_layout(db, profile):
+    """Back up metadata, move the old top-level entries, and commit path changes."""
+    from .backup_manager import crear_backup_en_biblioteca
+    from .database import configurar
+    from .library_layout import library_root, mounted_drive
+    from pathlib import PureWindowsPath
+    import shutil
+    preview=library_migration_preview(db,profile)
+    root=library_root(db,profile)
+    drive=mounted_drive(db,profile)
+    def relative(path):return str(PureWindowsPath(*path.relative_to(drive).parts))
+    from .thumbnailer import thumbnail_name
+    data=Path(db.execute('PRAGMA database_list').fetchone()[2]).parent
+    auto=data/'portadas_auto';covers=data/'portadas';covers.mkdir(exist_ok=True)
+    copied_covers=0
+    for item in db.execute('SELECT drive_id,ruta_relativa FROM items WHERE perfil_drive=?',(profile,)):
+        source=auto/thumbnail_name(profile,item['ruta_relativa'])
+        destination=covers/(item['drive_id']+'.jpg')
+        if source.is_file() and not source.is_symlink() and not destination.exists():
+            shutil.copy2(source,destination);copied_covers+=1
+    backup=crear_backup_en_biblioteca(root,db,data)
+    moved=[]
+    try:
+        for operation in preview['moves']:
+            source=Path(operation['from']); target=Path(operation['to'])
+            target.parent.mkdir(exist_ok=True)
+            shutil.move(str(source),str(target))
+            moved.append((source,target))
+        with db:
+            for source,target in moved:
+                old=relative(source)
+                new=relative(target)
+                for table in ('items','container_entries'):
+                    db.execute('UPDATE '+table+' SET ruta_relativa=?,perfil_drive=? WHERE perfil_drive=? AND ruta_relativa=?',
+                               (new,profile,profile,old))
+                    if target.is_dir():
+                        prefix=old+'\\'
+                        db.execute('UPDATE '+table+' SET ruta_relativa=? || substr(ruta_relativa,?) WHERE perfil_drive=? AND substr(ruta_relativa,1,?)=?',
+                                   (new+'\\',len(prefix)+1,profile,len(prefix),prefix))
+                row=db.execute('SELECT drive_id FROM items WHERE perfil_drive=? AND ruta_relativa=?',(profile,new)).fetchone()
+                if row:
+                    db.execute('''INSERT INTO pending_container_moves(drive_id,expected_relative,container_drive_id,perfil_drive)
+                        VALUES(?,?,'',?) ON CONFLICT(drive_id) DO UPDATE SET expected_relative=excluded.expected_relative,
+                        container_drive_id='',created_at=CURRENT_TIMESTAMP''',(row['drive_id'],new,profile))
+            db.execute('DELETE FROM configuracion WHERE clave=?',('migration_pending:'+profile,))
+        for folder in root.iterdir():
+            if folder.is_dir() and folder.name.casefold() in ('storage','containers') and not any(folder.iterdir()):
+                folder.rmdir()
+        return {'moved':len(moved),'covers':copied_covers,'backup':backup}
+    except Exception:
+        for source,target in reversed(moved):
+            if target.exists() and not source.exists():shutil.move(str(target),str(source))
+        raise
+
 def migrate_legacy_course_items(path):
     """Drop the retired course-item catalog after keeping a full DB snapshot."""
     path=Path(path)

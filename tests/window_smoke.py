@@ -11,7 +11,7 @@ import ctypes
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from core.database import conectar, configurar
-from core.desktop_api import DesktopAPI
+from tests.ui_smoke_fixture import DesktopAPI
 import webview
 
 launcher = importlib.machinery.SourceFileLoader('balisco_launcher', str(ROOT/'Balisco.pyw')).load_module()

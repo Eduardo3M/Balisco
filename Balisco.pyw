@@ -12,6 +12,7 @@ if sys.platform == 'win32':
 import argparse
 import json
 from core.database import conectar, DATA_DIR
+from core.profile_storage import ProfileStorage
 from core.drive_sync import detectar_perfiles_drive, DriveSync
 from core.search_parser import agregar_filtro, limpiar_todos_filtros, buscar
 
@@ -27,12 +28,14 @@ def main():
         print(json.dumps(detectar_perfiles_drive(),ensure_ascii=False,indent=2)); return
     if not args.sincronizar and args.buscar is None:
         desktop(debug=args.debug); return
-    db=conectar()
+    storage=ProfileStorage(DATA_DIR)
+    if args.perfil:storage.activate(args.perfil)
+    db=conectar(storage.database())
     try:
         if args.sincronizar:
             sync=DriveSync(db)
             print(json.dumps(sync.sincronizar_biblioteca(perfil=args.perfil),ensure_ascii=False))
-            sync.exportar_libros(DATA_DIR/'export_libros.json')
+            sync.exportar_libros(storage.directory()/'export_libros.json')
         if args.buscar is not None:
             filters=limpiar_todos_filtros()
             for token in args.buscar: filters=agregar_filtro(token,filters)
@@ -73,7 +76,7 @@ def desktop(debug=False):
     is_maximized = False
     try:
         from core.database import conectar, preferencia
-        with conectar() as db:
+        with conectar(api._dbpath) as db:
             geom_str = preferencia(db, 'window_geometry')
             if geom_str:
                 geom = json.loads(geom_str)
@@ -168,7 +171,9 @@ def configure_container_drop(window, api):
             source=Path(path)
             if not source.is_dir() and not source.is_file():continue
             folder=source.is_dir()
-            result=api.call('start_import',{'path':path})
+            try:active_tag=window.evaluate_js("window.balisco?.state?.tokens?.find(token=>token.startsWith('+')) || null")
+            except Exception:active_tag=None
+            result=api.call('start_import',{'path':path,'active_tag':active_tag})
             if not result.get('ok'):
                 try:window.evaluate_js('window.balisco?.importRejected('+json.dumps(result.get('error','No se pudo iniciar la importación'),ensure_ascii=False)+')')
                 except Exception:pass

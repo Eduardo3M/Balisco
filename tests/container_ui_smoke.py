@@ -12,7 +12,7 @@ import webview
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from core.database import conectar, configurar
-from core.desktop_api import DesktopAPI
+from tests.ui_smoke_fixture import DesktopAPI
 
 RESULT = {}
 
@@ -35,7 +35,7 @@ def run(window):
           if(!inspector.classList.contains('is-compact')||inspector.getBoundingClientRect().width>3||$('viewport').getBoundingClientRect().width-expandedCatalogWidth<expandedWidth-4||!$('details').inert||toggle.getAttribute('aria-expanded')!=='false'||!toggle.classList.contains('is-compact'))throw Error('Library inspector still occupies card space');
           toggle.click();await new Promise(resolve=>setTimeout(resolve,450));
           if(Math.abs(inspector.getBoundingClientRect().width-expandedWidth)>2||$('details').inert||toggle.getAttribute('aria-expanded')!=='true')throw Error('Library inspector did not expand');
-          localStorage.setItem('balisco.recentTags',JSON.stringify({extra:'2026-10-26T10:00:00.000Z',curso:'2026-10-25T10:00:00.000Z'}));
+          localStorage.setItem('balisco.recentTags.perfil.fixture',JSON.stringify({extra:'2026-10-26T10:00:00.000Z',curso:'2026-10-25T10:00:00.000Z'}));
           $('searchToggle').click();
           await wait(()=>$('tagSuggestions').querySelectorAll('[data-suggestion]').length===2);
           if($('ghost').value||$('tagSuggestions').hidden||!$('tagSuggestions').textContent.includes('ETIQUETAS RECIENTES')||$('tagSuggestions').querySelector('[data-suggestion="0"]')?.textContent.trim().startsWith('+extra')!==true)throw Error('Empty search does not recommend recently used tags: '+JSON.stringify({value:$('ghost').value,html:$('tagSuggestions').innerHTML}));
