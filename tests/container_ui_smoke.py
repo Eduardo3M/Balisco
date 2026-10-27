@@ -68,9 +68,15 @@ def run(window):
           if(stateBounds.some((bounds,index)=>Math.abs((bounds.left+bounds.right-ratingBounds[index].left-ratingBounds[index].right)/2)>1))throw Error('Reading state dots and rating stars do not share columns');
           for(const button of menu.querySelectorAll('.item-actions-rating button,.item-actions-states button')){const box=button.getBoundingClientRect(),symbol=button.querySelector('svg,.state-indicator').getBoundingClientRect();if(Math.abs((box.left+box.right-symbol.left-symbol.right)/2)>1||Math.abs((box.top+box.bottom-symbol.top-symbol.bottom)/2)>1)throw Error('Icon is off center inside its highlight');}
           if(Math.abs(menuRect.left-180)>4||Math.abs(menuRect.top-220)>4||menuRect.width>205||!menu.querySelector('[data-item-action="visible"]')||menu.querySelector('[data-item-action="visible"] .item-action-check')||menu.querySelector('[data-item-action="favorite"]')?.textContent!=='Quitar de favoritos'||menu.querySelectorAll('.item-actions-rating .on').length!==5||menu.querySelector('[data-item-state="abandonado"]')?.getAttribute('aria-pressed')!=='true'||menu.querySelector('.item-actions-heading'))throw Error('Context menu does not reflect saved properties or is too wide');
-          if(!menu.querySelector('[data-item-action="open-panel"] svg'))throw Error('Context menu lacks Open panel');
-          toggle.click();await new Promise(resolve=>setTimeout(resolve,450));
-          menu.querySelector('[data-item-action="open-panel"]').click();await new Promise(resolve=>setTimeout(resolve,450));
+          const panelAction=menu.querySelector('[data-item-action="open-panel"]');
+          if(!panelAction?.querySelector('svg')||panelAction.textContent.trim()!=='Cerrar panel lateral')throw Error('Context menu does not offer to close the open inspector');
+          panelAction.click();await new Promise(resolve=>setTimeout(resolve,450));
+          if(!inspector.classList.contains('is-compact'))throw Error('Context menu did not close the inspector');
+          courseCard.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:180,clientY:220}));
+          await wait(()=>$('popover').querySelector('[data-item-action="open-panel"]')&&!$('popover').hidden);
+          const reopen=$('popover').querySelector('[data-item-action="open-panel"]');
+          if(reopen.textContent.trim()!=='Abrir panel lateral')throw Error('Context menu does not offer to open the compact inspector');
+          reopen.click();await new Promise(resolve=>setTimeout(resolve,450));
           if(inspector.classList.contains('is-compact'))throw Error('Context menu did not open the inspector');
           courseCard.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:180,clientY:220}));
           await wait(()=>$('popover').classList.contains('item-actions')&&!$('popover').hidden);
@@ -93,6 +99,7 @@ def run(window):
           if(inspector.getBoundingClientRect().width>3||!$('courseInspector').inert||!$('details').inert)throw Error('Explorer inspector still occupies card space');
           $('resources').querySelector('[data-folder]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:190,clientY:240}));
           await wait(()=>$('popover').querySelector('[data-item-action="open-panel"]')&&!$('popover').hidden);
+          if($('popover').querySelector('[data-item-action="open-panel"]').textContent.trim()!=='Abrir panel lateral')throw Error('Explorer menu does not offer to open the compact inspector');
           $('popover').querySelector('[data-item-action="open-panel"]').click();await new Promise(resolve=>setTimeout(resolve,450));
           if(Math.abs(inspector.getBoundingClientRect().width-expandedWidth)>2||$('courseInspector').inert)throw Error('Explorer inspector did not expand');
           const rect=$('courseView').getBoundingClientRect(),bar=$('courseView').querySelector('.course-bar').getBoundingClientRect();
