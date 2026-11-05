@@ -6,7 +6,7 @@ import unittest
 import zipfile
 from unittest.mock import patch
 from core.database import conectar, configurar
-from core.drive_sync import DriveSync, extraer_ids_proto, conectar_db_drive_ro
+from core.drive_sync import DriveSync, extraer_ids_proto, conectar_db_drive_ro, es_raiz_drive
 from core.items_manager import ItemsManager
 from core.search_parser import agregar_filtro, limpiar_todos_filtros, buscar, buscar_global
 from core.tags_manager import TagsManager, obtener_etiquetas_ordenadas_frecuencia
@@ -42,6 +42,14 @@ class CoreTests(unittest.TestCase):
         self.assertEqual([r[0] for r in self.db.execute('SELECT titulo FROM items ORDER BY titulo')],['Curso Blender','Roma','capitulo'])
         self.assertEqual([r['titulo'] for r in buscar(self.db,limpiar_todos_filtros())],['Curso Blender','Roma'])
         self.assertEqual(self.db.execute("SELECT categoria_macro FROM items WHERE tipo='pdf'").fetchone()[0],'Historia')
+
+    def test_google_drive_english_root_is_supported_on_first_sync(self):
+        self.assertTrue(es_raiz_drive('My Drive'))
+        with sqlite3.connect(self.source) as source:
+            source.execute("UPDATE items SET local_title='My Drive' WHERE stable_id=1")
+        self.run_sync()
+        path=self.db.execute("SELECT ruta_relativa FROM items WHERE drive_id='drive_id_004'").fetchone()[0]
+        self.assertTrue(path.startswith('My Drive\\'))
     def test_document_type_and_epub_format_are_independent(self):
         source=sqlite3.connect(self.source)
         source.execute('INSERT INTO items VALUES(?,?,?,?,?,?,?)',

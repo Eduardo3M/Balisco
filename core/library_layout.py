@@ -28,12 +28,14 @@ def mounted_drive(db, profile):
     configured=preferencia(db,'unidad_drive:'+profile)
     if configured:
         root=Path(configured).resolve()
-        if (root/'Mi unidad').is_dir() or (root/'My Drive').is_dir(): return root
+        from .drive_sync import DRIVE_ROOT_NAMES
+        if any((root/name).is_dir() for name in DRIVE_ROOT_NAMES): return root
     if os.name!='nt': raise FileNotFoundError('La unidad de Google Drive no está montada')
     import ctypes
     mask=ctypes.windll.kernel32.GetLogicalDrives()
     drives=[Path(chr(65+n)+':/') for n in range(26) if mask & (1<<n)]
-    matches=[drive for drive in drives if (drive/'Mi unidad').is_dir() or (drive/'My Drive').is_dir()]
+    from .drive_sync import DRIVE_ROOT_NAMES
+    matches=[drive for drive in drives if any((drive/name).is_dir() for name in DRIVE_ROOT_NAMES)]
     if not matches:raise FileNotFoundError('La unidad de Google Drive no está montada')
     if len(matches)!=1: raise ValueError('Selecciona la unidad de Google Drive del perfil activo')
     if configured and str(matches[0]).casefold()!=str(configured).casefold():
@@ -49,7 +51,8 @@ def root_parts(meta, drive_id):
         except (ValueError,UnicodeError): continue
         if ident==drive_id:
             parts=meta.parts(stable)
-            if parts and parts[0] in ('Mi unidad','My Drive') and len(parts)>1:
+            from .drive_sync import es_raiz_drive
+            if parts and es_raiz_drive(parts[0]) and len(parts)>1:
                 return stable,parts
     return None,None
 

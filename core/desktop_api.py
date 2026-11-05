@@ -394,8 +394,9 @@ class DesktopAPI:
             drive=Path(preferencia(db,'unidad_drive:'+profile)).resolve() if preferencia(db,'unidad_drive:'+profile) else Path(parent.anchor)
             if not parent.is_relative_to(drive):raise ValueError('Selecciona una ubicación dentro de Google Drive')
             parts=parent.relative_to(drive).parts
-            if not parts or parts[0] not in ('Mi unidad','My Drive'):
-                raise ValueError('Selecciona una ubicación dentro de Mi unidad')
+            from .drive_sync import es_raiz_drive
+            if not parts or not es_raiz_drive(parts[0]):
+                raise ValueError('Selecciona una ubicación dentro de Mi unidad / My Drive')
             folder=parent/name
             folder.mkdir()
             return link_folder(db,profile,folder)

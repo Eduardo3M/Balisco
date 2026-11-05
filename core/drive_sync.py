@@ -7,11 +7,17 @@ import shutil
 from pathlib import Path, PureWindowsPath
 import re
 import sqlite3
+import unicodedata
 from .database import configurar, preferencia
 from .cleaner import clean_book_title_and_author
 
 ID_PATTERN=re.compile(r"[A-Za-z0-9_-]{10,200}\Z")
+DRIVE_ROOT_NAMES=('Mi unidad','My Drive')
 class SeleccionRequerida(ValueError): pass
+
+def es_raiz_drive(name):
+    normalized=unicodedata.normalize('NFKC',str(name or '')).strip().casefold()
+    return normalized in {root.casefold() for root in DRIVE_ROOT_NAMES}
 
 def conectar_db_drive_ro(ruta_db):
     db=sqlite3.connect(Path(ruta_db).resolve().as_uri()+'?mode=ro',uri=True,timeout=10)
@@ -70,7 +76,7 @@ class Metadata:
         node=self.nodes.get(ident)
         if not node or node['trashed'] or node.get('is_tombstone') or excluido(node['local_title']): return None
         name=node['local_title']
-        if name in ('Mi unidad','My Drive'): result=(name,)
+        if es_raiz_drive(name): result=(name,)
         else:
             result=None
             for parent in self.parents.get(ident,[]):
@@ -86,7 +92,7 @@ class Metadata:
         node=self.nodes.get(ident)
         if not node or node['trashed'] or node.get('is_tombstone'):return None
         name=node['local_title']
-        if name in ('Mi unidad','My Drive'):
+        if es_raiz_drive(name):
             self.raw_cache[ident]=(name,)
             return (name,)
         for parent in self.parents.get(ident,[]):
@@ -135,7 +141,7 @@ def obtener_letra_drive():
     for n in range(26):
         if mask & (1<<n):
             root=Path(chr(65+n)+':/');
-            if any((root/name/'Biblioteca').is_dir() for name in ('Mi unidad','My Drive')): matches.append(str(root))
+            if any((root/name/'Biblioteca').is_dir() for name in DRIVE_ROOT_NAMES): matches.append(str(root))
     if len(matches)!=1: raise SeleccionRequerida('Unidad ausente o ambigua; configura unidad_drive para el perfil activo')
     return matches[0]
 

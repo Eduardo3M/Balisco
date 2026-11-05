@@ -76,7 +76,8 @@ def queue_colab(db, profile, ids, data_dir):
     # The first part is Mi unidad / My Drive; Colab always mounts it as MyDrive.
     drive=Path(root.anchor)
     parts=list(root.relative_to(drive).parts)
-    if not parts or parts[0] not in ('Mi unidad','My Drive'):raise ValueError('La biblioteca debe estar dentro de Mi unidad')
+    from .drive_sync import es_raiz_drive
+    if not parts or not es_raiz_drive(parts[0]):raise ValueError('La biblioteca debe estar dentro de Mi unidad / My Drive')
     notebook['cells'][0]['source']=[line.replace('__BALISCO_ROOT__',json.dumps(parts[1:],ensure_ascii=False)) for line in notebook['cells'][0]['source']]
     notebook_file=hidden/'generar_portadas.ipynb'
     notebook_file.write_text(json.dumps(notebook,ensure_ascii=False,indent=1),encoding='utf-8')

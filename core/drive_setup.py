@@ -7,7 +7,7 @@ import subprocess
 import webbrowser
 
 from .database import configurar, preferencia
-from .drive_sync import Metadata, conectar_db_drive_ro, detectar_perfiles_drive, extraer_ids_proto, SeleccionRequerida
+from .drive_sync import Metadata, conectar_db_drive_ro, detectar_perfiles_drive, extraer_ids_proto, es_raiz_drive, SeleccionRequerida
 from .library_layout import mounted_drive, root_id, root_parts
 
 
@@ -81,8 +81,8 @@ def link_folder(db, profile, folder):
     if not folder.is_dir() or not folder.is_relative_to(drive):
         raise ValueError('Selecciona una carpeta existente de Google Drive')
     parts=folder.relative_to(drive).parts
-    if len(parts)<2 or parts[0] not in ('Mi unidad','My Drive'):
-        raise ValueError('La biblioteca debe estar dentro de Mi unidad')
+    if len(parts)<2 or not es_raiz_drive(parts[0]):
+        raise ValueError('La biblioteca debe estar dentro de Mi unidad / My Drive')
     if any(part.startswith('.') for part in parts[1:]):
         raise ValueError('La biblioteca no puede estar dentro de una carpeta oculta')
     ident=drive_id_for_path(profile,str(PureWindowsPath(*parts)),is_folder=True)

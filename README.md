@@ -2,14 +2,14 @@
   <img src="ui/banner.png" alt="Balisco" width="100%" />
 </p>
 
-<h1 align="center">Balisco v1.0</h1>
+<h1 align="center">Balisco v1.0.1</h1>
 
 <p align="center">
   <strong>Tu biblioteca visual inteligente sobre Google Drive con reproductor y lector multiformato integrado, sin ocupar espacio en tu PC.</strong>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg?style=flat-square" alt="Versión 1.0.0" />
+  <img src="https://img.shields.io/badge/version-1.0.1-blue.svg?style=flat-square" alt="Versión 1.0.1" />
   <img src="https://img.shields.io/badge/platform-Windows%20x64-informational.svg?style=flat-square" alt="Plataforma Windows x64" />
   <img src="https://img.shields.io/badge/python-3.12%2B-brightgreen.svg?style=flat-square" alt="Python 3.12+" />
   <img src="https://img.shields.io/badge/storage-Google%20DriveFS-orange.svg?style=flat-square" alt="Google Drive" />
@@ -44,8 +44,8 @@
 ## 🚀 Instalación (Windows x64)
 
 1. Instala y mantén en ejecución **Google Drive para escritorio**.
-2. Descarga e instala **`BaliscoSetup-1.0.0-win-x64.exe`** desde la sección de [**Releases**](https://github.com/Eduardo3M/Balisco/releases/latest).
-3. Al abrir Balisco, selecciona o crea la carpeta de tu biblioteca dentro de `Mi unidad`.
+2. Descarga e instala **`BaliscoSetup-1.0.1-win-x64.exe`** desde la sección de [**Releases**](https://github.com/Eduardo3M/Balisco/releases/latest).
+3. Al abrir Balisco, selecciona o crea la carpeta de tu biblioteca dentro de `Mi unidad` / `My Drive`.
 
 > Tus notas, etiquetas, portadas y configuraciones se guardan de forma segura fuera del directorio de instalación en `%LOCALAPPDATA%\Balisco`, por lo que actualizar o reinstalar la aplicación nunca altera tus datos ni tus archivos de Drive.
 

@@ -110,7 +110,8 @@ def library_root(db, profile):
         from .library_layout import library_root as linked_root
         return linked_root(db,profile)
     root=Path(preferencia(db,'unidad_drive:'+profile) or obtener_letra_drive()).resolve()
-    for name in ('Mi unidad','My Drive'):
+    from .drive_sync import DRIVE_ROOT_NAMES
+    for name in DRIVE_ROOT_NAMES:
         candidate=root/name/'Biblioteca'
         if candidate.is_dir(): return candidate.resolve()
     raise FileNotFoundError('No se encontró Biblioteca en la unidad de Drive')
