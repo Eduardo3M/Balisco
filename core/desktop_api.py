@@ -368,6 +368,12 @@ class DesktopAPI:
         if action=='drive_status':
             from .drive_setup import status
             return status(db)
+        if action=='local_library_status':
+            row=db.execute('''SELECT COUNT(*) AS total,
+                                     SUM(CASE WHEN etiquetas IS NOT NULL AND etiquetas != '' THEN 1 ELSE 0 END) AS tagged
+                                FROM items
+                               WHERE perfil_drive=? AND disponible=1 AND oculto=0''',(profile,)).fetchone()
+            return {'available':bool(row['total']),'items':row['total'],'tagged':row['tagged'] or 0,'profile':profile}
         if action=='drive_install':
             from .drive_setup import open_install_page
             return open_install_page()

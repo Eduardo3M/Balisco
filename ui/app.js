@@ -304,7 +304,7 @@ let filterTypes=[...defaultFilterTypes];try{const saved=JSON.parse(localStorage.
 const stateNames={pendiente:'Pendiente',interesado:'Interesado',leyendo:'Leyendo',leido:'Leído',abandonado:'Abandonado'};
 const typeIcons={documento:'document',contenedor:'package',video:'video',audio:'audio',imagen:'image',otro:'other'};
 const typeNames={documento:'Documentos',contenedor:'Contenedores',video:'Videos',audio:'Audio',imagen:'Imágenes',otro:'Otros archivos'};
-const S={profileId:'',loading:true,items:[],tokens:[],selected:null,pinned:false,showOverlays:true,mode:'balisco',theme:'auto',zoom:195,wallpaper:'',containerWallpaper:'',wallpaperTarget:1,wallpaperOpacity:24,wallpaperBlur:18,containerBackgroundOpacity:100,containerBackgroundBlur:18,wallpaperPositions:{},confirmDelete:true,view:'grid',revision:0,selectionRevision:0,rows:new Map(),covers:new Map(),pending:new Map(),saving:Promise.resolve(),course:null,resources:[],coursePath:[],courseFolderIds:new Map(),courseQuery:'',courseSelection:null,courseSelectionRevision:0,courseSelectedKeys:new Set(),courseAnchorKey:null,courseViewMode:'details',courseZoom:{grid:0,list:1},courseCovers:new Map(),bulkIds:new Set(),similarIds:null,languages:['Español','Inglés'],showRecentTitles:false,importing:false,importingJob:null,importCancelling:false};
+const S={profileId:'',loading:true,items:[],tokens:[],selected:null,pinned:false,showOverlays:true,mode:'balisco',theme:'auto',zoom:195,wallpaper:'',containerWallpaper:'',wallpaperTarget:1,wallpaperOpacity:24,wallpaperBlur:18,containerBackgroundOpacity:100,containerBackgroundBlur:18,wallpaperPositions:{},confirmDelete:true,view:'grid',revision:0,selectionRevision:0,rows:new Map(),covers:new Map(),pending:new Map(),saving:Promise.resolve(),course:null,resources:[],coursePath:[],courseFolderIds:new Map(),courseQuery:'',courseSelection:null,courseSelectionRevision:0,courseSelectedKeys:new Set(),courseAnchorKey:null,courseViewMode:'details',courseZoom:{grid:0,list:1},courseCovers:new Map(),bulkIds:new Set(),similarIds:null,languages:['Español','Inglés'],showRecentTitles:false,importing:false,importingJob:null,importCancelling:false,driveOfflineNoticeShown:false};
 const profileStorageKey=key=>S.profileId?`${key}.perfil.${S.profileId}`:key;
 const importJobs=new Map();
 const recentImportIds=new Set();
@@ -4447,12 +4447,24 @@ async function loadActiveProfile(){
  S.containerWallpaper=result.prefs.container_wallpaper||'';
  await applyContainerWallpaper(S.containerWallpaper);
  const drive=await api('drive_status');
- if(await showDriveSetup(drive)){
+ if(drive.state==='ready'){
   await api('sync');
   await refresh();
   $('status').textContent='Biblioteca local · Lista';
  }else{
-  S.items=[];S.rows.clear();$('canvas').replaceChildren();updateSummary();
+  const local=await api('local_library_status');
+  if(local.available){
+   $('setupView').hidden=true;
+   await refresh();
+   $('status').textContent='Biblioteca local · Drive pendiente de conexión';
+   if(!S.driveOfflineNoticeShown){
+    notify('La biblioteca y sus etiquetas están disponibles. Conecta Google Drive para sincronizar.','working');
+    S.driveOfflineNoticeShown=true;
+   }
+  }else{
+   await showDriveSetup(drive);
+   S.items=[];S.rows.clear();$('canvas').replaceChildren();updateSummary();
+  }
  }
  }finally{S.loading=false;scheduleDraw();}
 }
